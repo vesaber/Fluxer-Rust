@@ -96,17 +96,6 @@ impl EventHandler for TestBot {
                 Err(_) => {}
             }
         }
-        else if content == "!ban" {
-            if let Some(guild_id) = &msg.guild_id {
-                let _ = send("banning the message author").await;
-                match ctx.http.ban_member(guild_id, &msg.author.id, "Requested via !ban command").await {
-                    Ok(_) => println!("Ban command sent"),
-                    Err(e) => {
-                        let _ = send(&format!("Failed to ban: {:?}", e)).await;
-                    }
-                }
-            }
-        }
     }
 }
 
