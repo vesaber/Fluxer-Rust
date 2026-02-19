@@ -13,4 +13,7 @@ pub enum ClientError {
 
     #[error("Connection closed by server")]
     ConnectionClosed,
+
+    #[error("Voice error: {0}")]
+    Voice(String),
 }
