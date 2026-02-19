@@ -5,6 +5,5 @@ A Fluxer API Wrapper written in Rust.
 
 # Contribute
 
-Contributions are very very welcome especially when the library is very early in development
-
-## How to Contribute
+Contributions are very very welcome especially when the library is very early in development.
+A quick guide on how to contribute will come very quickly im just too tired to do it right now.
