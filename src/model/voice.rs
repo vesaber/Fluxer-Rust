@@ -4,4 +4,5 @@ use serde::{Deserialize, Serialize};
 pub struct VoiceState {
     pub token: String,
     pub endpoint: String,
+    pub session_id: Option<String>,
 }
