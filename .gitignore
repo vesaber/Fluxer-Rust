@@ -1,3 +1,5 @@
 /target
 Cargo.lock
-/audio
+
+examples/test.rs
+# sorry the test script is still in the making. close to being done tho so uhh tomorrow.. :)

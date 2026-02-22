@@ -17,3 +17,5 @@ tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-native-roots"]
 tokio-util = { version = "0.7.18", features = ["io"] }
 url = "2.5.8"
 rustls = { version = "0.23", features = ["ring"] }
+md5 = "0.7"
+rand = "0.10.0"

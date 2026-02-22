@@ -5,12 +5,13 @@ use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::prelude::*;
 use livekit::Room;
 use std::process::Stdio;
-use tokio::io::{AsyncReadExt as _};
+use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 use crate::http::Http;
+use tokio::task::AbortHandle;
 
 pub struct FluxerVoiceConnection {
-    pub room: Room,
+    pub room: Arc<Room>,
     audio_source: NativeAudioSource,
 }
 
@@ -19,13 +20,10 @@ impl FluxerVoiceConnection {
         url: &str,
         token: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let (room, _events) = Room::connect(url, token, Default::default()).await?;
-        let source = NativeAudioSource::new(
-            Default::default(),
-            48_000,
-            2,
-            960,
-        );
+        let (room, events) = Room::connect(url, token, Default::default()).await?;
+        let room = Arc::new(room);
+        tokio::spawn(async move { let mut e = events; while e.recv().await.is_some() {} });
+        let source = NativeAudioSource::new(Default::default(), 48_000, 2, 960);
 
         let track = LocalAudioTrack::create_audio_track(
             "audio",
@@ -44,21 +42,15 @@ impl FluxerVoiceConnection {
 
         Ok(Self { room, audio_source: source })
     }
+
     pub async fn play_music(
         &self,
         path: &str,
         http: Arc<Http>,
         channel_id: String,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<AbortHandle, Box<dyn std::error::Error + Send + Sync>> {
         let mut child = Command::new("ffmpeg")
-            .args([
-                "-re",
-                "-i", path,
-                "-f", "s16le",
-                "-ar", "48000",
-                "-ac", "2",
-                "pipe:1",
-            ])
+            .args(["-re", "-i", path, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -67,9 +59,8 @@ impl FluxerVoiceConnection {
         let mut stderr = child.stderr.take().ok_or("ffmpeg: no stderr")?;
         let source = self.audio_source.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut buffer = vec![0u8; 960 * 2 * 2];
-
             let mut stream_error: Option<String> = None;
 
             loop {
@@ -98,6 +89,7 @@ impl FluxerVoiceConnection {
                     }
                 }
             }
+
             let exit_status = child.wait().await;
             let failed = exit_status.map(|s| !s.success()).unwrap_or(true);
             if failed || stream_error.is_some() {
@@ -114,13 +106,14 @@ impl FluxerVoiceConnection {
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                let error_msg = stream_error
-                    .unwrap_or_else(|| format!("ffmpeg exited with an error:\n```\n{}\n```", last_lines));
+                let error_msg = stream_error.unwrap_or_else(|| {
+                    format!("ffmpeg exited with an error:\n```\n{}\n```", last_lines)
+                });
 
                 let _ = http.send_message(&channel_id, &error_msg).await;
             }
         });
 
-        Ok(())
+        Ok(handle.abort_handle())
     }
 }
