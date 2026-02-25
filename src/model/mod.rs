@@ -1,6 +1,13 @@
+//! Typed structs for everything the Fluxer API returns -- users, guilds,
+//! channels, messages, embeds, and all the gateway event payloads.
+//!
+//! Most fields are `Option<T>` because the API doesn't always include
+//! everything depending on the endpoint.
+
 pub mod voice;
 use serde::{Deserialize, Serialize};
 
+/// All entity IDs in the Fluxer API are snowflake strings.
 pub type Snowflake = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,8 +35,10 @@ pub struct Guild {
     pub splash: Option<String>,
     pub owner_id: Option<Snowflake>,
     pub afk_channel_id: Option<Snowflake>,
+    /// AFK timeout in seconds.
     pub afk_timeout: Option<u64>,
     pub verification_level: Option<u64>,
+    /// 0 = all messages, 1 = only mentions.
     pub default_message_notifications: Option<u64>,
     pub explicit_content_filter: Option<u64>,
     pub roles: Option<Vec<Role>>,
@@ -53,10 +62,12 @@ pub struct Member {
     pub mute: Option<bool>,
     pub pending: Option<bool>,
     pub permissions: Option<String>,
+    /// ISO 8601 timestamp. If set, the member is timed out until then.
     pub communication_disabled_until: Option<String>,
 }
 
 impl Member {
+    /// Returns the member's nickname if they have one, otherwise their username.
     pub fn display_name(&self) -> &str {
         if let Some(nick) = &self.nick {
             return nick.as_str();
@@ -72,15 +83,21 @@ impl Member {
 pub struct Role {
     pub id: Snowflake,
     pub name: String,
+    /// Integer color value. 0 means no color.
     pub color: Option<u64>,
+    /// Whether this role shows up separately in the member list.
     pub hoist: Option<bool>,
     pub icon: Option<String>,
     pub position: Option<i64>,
+    /// Permission bitfield.
     pub permissions: Option<String>,
+    /// Managed roles are created by integrations (bot roles, booster role, etc).
     pub managed: Option<bool>,
     pub mentionable: Option<bool>,
 }
 
+/// Custom or standard emoji. Custom emojis have both `name` and `id`,
+/// standard unicode emojis only have `name`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Emoji {
     pub id: Option<Snowflake>,
@@ -94,6 +111,8 @@ pub struct Emoji {
 }
 
 impl Emoji {
+    /// Formats the emoji for use in reaction endpoints. Returns `"name:id"` for
+    /// custom emojis or just the name for unicode ones.
     pub fn to_reaction_string(&self) -> String {
         match (&self.name, &self.id) {
             (Some(name), Some(id)) => format!("{}:{}", name, id),
@@ -106,6 +125,7 @@ impl Emoji {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Channel {
     pub id: Snowflake,
+    /// Channel type, see [`ChannelType`] for values.
     #[serde(rename = "type")]
     pub kind: Option<u8>,
     pub guild_id: Option<Snowflake>,
@@ -115,9 +135,13 @@ pub struct Channel {
     pub topic: Option<String>,
     pub nsfw: Option<bool>,
     pub last_message_id: Option<Snowflake>,
+    /// Bits per second, for voice channels.
     pub bitrate: Option<u64>,
+    /// 0 = unlimited.
     pub user_limit: Option<u64>,
+    /// Slowmode, in seconds.
     pub rate_limit_per_user: Option<u64>,
+    /// Recipients for DM/group DM channels.
     pub recipients: Option<Vec<User>>,
     pub icon: Option<String>,
     pub owner_id: Option<Snowflake>,
@@ -137,6 +161,7 @@ pub enum ChannelType {
     Stage = 13,
 }
 
+/// Permission overwrite for a channel. `kind` is 0 for role, 1 for member.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionOverwrite {
     pub id: Snowflake,
@@ -152,6 +177,7 @@ pub struct Message {
     pub channel_id: Option<Snowflake>,
     pub guild_id: Option<Snowflake>,
     pub author: User,
+    /// Only present in guild messages.
     pub member: Option<Member>,
     pub content: Option<String>,
     pub timestamp: Option<String>,
@@ -165,6 +191,7 @@ pub struct Message {
     pub reactions: Option<Vec<Reaction>>,
     pub pinned: Option<bool>,
     pub webhook_id: Option<Snowflake>,
+    /// 0 = default, 19 = reply, etc.
     #[serde(rename = "type")]
     pub kind: Option<u8>,
     pub referenced_message: Option<Box<Message>>,
@@ -198,6 +225,7 @@ pub struct Attachment {
     pub ephemeral: Option<bool>,
 }
 
+/// Rich embed. Use [`EmbedBuilder`] to construct these.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Embed {
     pub title: Option<String>,
@@ -206,6 +234,7 @@ pub struct Embed {
     pub description: Option<String>,
     pub url: Option<String>,
     pub timestamp: Option<String>,
+    /// Sidebar color as an integer, e.g. `0xFF0000` for red.
     pub color: Option<u64>,
     pub footer: Option<EmbedFooter>,
     pub image: Option<EmbedMedia>,
@@ -239,6 +268,7 @@ pub struct EmbedAuthor {
 pub struct EmbedField {
     pub name: String,
     pub value: String,
+    /// If true, fields can sit side-by-side.
     #[serde(default)]
     pub inline: bool,
 }
@@ -250,6 +280,17 @@ pub struct Reaction {
     pub emoji: Emoji,
 }
 
+/// Builder for [`Embed`]. Chain methods and call `.build()` at the end.
+///
+/// ```rust
+/// use fluxer::prelude::*;
+///
+/// let embed = EmbedBuilder::new()
+///     .title("Hello")
+///     .description("World")
+///     .color(0x00FF00)
+///     .build();
+/// ```
 #[derive(Debug, Default)]
 pub struct EmbedBuilder(Embed);
 
@@ -346,11 +387,14 @@ pub struct Webhook {
     pub url: Option<String>,
 }
 
+// --- Gateway event payloads ---
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypingStart {
     pub channel_id: Option<Snowflake>,
     pub guild_id: Option<Snowflake>,
     pub user_id: Snowflake,
+    /// Unix timestamp in seconds.
     pub timestamp: u64,
     pub member: Option<Member>,
 }
@@ -389,6 +433,7 @@ pub struct ReactionRemoveEmoji {
     pub emoji: Emoji,
 }
 
+/// Partial message data from an edit. Only changed fields are populated.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageUpdate {
     pub id: Snowflake,
@@ -492,19 +537,24 @@ pub struct ChannelPinsUpdate {
     pub last_pin_timestamp: Option<String>,
 }
 
+/// Received once after connecting. Contains the bot user, session info for
+/// resuming, and the initial guild list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ready {
     pub v: Option<u64>,
     pub session_id: String,
     pub resume_gateway_url: Option<String>,
     pub user: User,
+    /// Guilds come in as unavailable first; full data arrives via GUILD_CREATE events.
     pub guilds: Option<Vec<UnavailableGuild>>,
+    /// `[shard_id, num_shards]`
     pub shard: Option<[u64; 2]>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnavailableGuild {
     pub id: Snowflake,
+    /// `true` = temporary outage, `false`/absent = bot was removed.
     pub unavailable: Option<bool>,
 }
 
@@ -557,6 +607,9 @@ pub struct WebhooksUpdate {
     pub guild_id: Option<Snowflake>,
 }
 
+// --- Request payloads ---
+
+/// Payload for sending/editing messages. All fields optional; only set what you need.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct MessageCreatePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -603,6 +656,7 @@ pub struct ChannelCreatePayload {
     pub nsfw: Option<bool>,
 }
 
+/// For nullable fields like `nick`, use `Some(None)` to clear them.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct EditMemberPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -648,18 +702,24 @@ pub struct EditRolePayload {
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CreateInvitePayload {
+    /// Seconds. 0 = never expires.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_age: Option<u64>,
+    /// 0 = unlimited.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_uses: Option<u64>,
+    /// If true, members joined via this invite get kicked when they disconnect
+    /// (unless they've been given a role).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temporary: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique: Option<bool>,
 }
 
+/// Query params for fetching messages. Only set one of `before`/`after`/`around`.
 #[derive(Debug, Clone, Default)]
 pub struct GetMessagesQuery {
+    /// 1-100.
     pub limit: Option<u8>,
     pub before: Option<Snowflake>,
     pub after: Option<Snowflake>,
@@ -713,8 +773,10 @@ pub struct EditGuildPayload {
 pub struct WebhookExecutePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// Override the webhook's name for this message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+    /// Override the webhook's avatar for this message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

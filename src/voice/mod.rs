@@ -1,3 +1,5 @@
+//! Voice support via LiveKit. Requires `ffmpeg` to be installed for audio playback.
+
 use std::sync::Arc;
 use livekit::options::TrackPublishOptions;
 use livekit::track::{LocalAudioTrack, LocalTrack, TrackSource};
@@ -10,12 +12,16 @@ use tokio::process::Command;
 use crate::http::Http;
 use tokio::task::AbortHandle;
 
+/// A voice connection backed by LiveKit. Get one from [`Context::join_voice`](crate::client::Context::join_voice).
 pub struct FluxerVoiceConnection {
+    /// The underlying LiveKit room, exposed in case you need it for anything advanced.
     pub room: Arc<Room>,
     audio_source: NativeAudioSource,
 }
 
 impl FluxerVoiceConnection {
+    /// Connects to a LiveKit voice server. Called internally by
+    /// [`Context::join_voice`](crate::client::Context::join_voice).
     pub async fn connect(
         url: &str,
         token: &str,
@@ -43,6 +49,11 @@ impl FluxerVoiceConnection {
         Ok(Self { room, audio_source: source })
     }
 
+    /// Plays audio from a file (anything ffmpeg can decode). Spawns ffmpeg
+    /// in the background and streams PCM into the voice channel.
+    ///
+    /// Returns an [`AbortHandle`] you can call `.abort()` on to stop playback.
+    /// If ffmpeg errors out, the last few lines of stderr get sent to `channel_id`.
     pub async fn play_music(
         &self,
         path: &str,
