@@ -1,9 +1,29 @@
+//! HTTP client for the Fluxer REST API.
+//!
+//! Handles auth headers, serialization, and error handling. You'll usually
+//! access this through `ctx.http` in your event handlers.
+
 use reqwest::{ header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE}, StatusCode, };
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use crate::error::ClientError;
 use crate::model::*;
 
+/// HTTP client for making REST API calls.
+///
+/// Created automatically by the client builder. Available as `ctx.http` in event handlers
+/// or directly if you just need REST calls without a gateway connection:
+///
+/// ```rust,no_run
+/// use fluxer::http::Http;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let http = Http::new("your-bot-token", "https://api.fluxer.app/v1".to_string());
+///     let me = http.get_me().await.unwrap();
+///     println!("Bot user: {}", me.username);
+/// }
+/// ```
 pub struct Http {
     pub client: reqwest::Client,
     pub base_url: String,
@@ -11,6 +31,8 @@ pub struct Http {
 }
 
 impl Http {
+    /// Creates a new HTTP client. The token is sent as `Bot {token}` in the
+    /// Authorization header on every request.
     pub fn new(token: &str, base_url: String) -> Self {
         let mut headers = HeaderMap::new();
         let auth_value = format!("Bot {}", token);
@@ -57,6 +79,7 @@ impl Http {
         Ok(())
     }
 
+    /// Fetches the gateway URL. Used internally during connection setup.
     pub async fn get_gateway(&self) -> Result<String, ClientError> {
         let url = format!("{}/gateway/bot", self.base_url);
         let res = self
@@ -65,6 +88,7 @@ impl Http {
         Ok(res.url)
     }
 
+    /// Fetches the bot's own user object.
     pub async fn get_me(&self) -> Result<User, ClientError> {
         let url = format!("{}/users/@me", self.base_url);
         self.request_json(self.client.get(&url)).await
@@ -75,6 +99,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Returns all guilds the bot is in.
     pub async fn get_current_user_guilds(&self) -> Result<Vec<Guild>, ClientError> {
         let url = format!("{}/users/@me/guilds", self.base_url);
         self.request_json(self.client.get(&url)).await
@@ -85,6 +110,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Edits a channel. Only the fields you set in the payload will change.
     pub async fn edit_channel(
         &self,
         channel_id: &str,
@@ -94,16 +120,32 @@ impl Http {
         self.request_json(self.client.patch(&url).json(payload)).await
     }
 
+    /// Permanently deletes a channel. Can't be undone.
     pub async fn delete_channel(&self, channel_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/channels/{}", self.base_url, channel_id);
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Triggers the "Bot is typing..." indicator. Lasts ~10 seconds or until
+    /// the bot sends a message. (I actually haven't tested this)
     pub async fn trigger_typing(&self, channel_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/channels/{}/typing", self.base_url, channel_id);
         self.request_empty(self.client.post(&url).body("{}")).await
     }
 
+    /// Fetches messages from a channel. Use [`GetMessagesQuery`] to paginate.
+    ///
+    /// ```rust,no_run
+    /// # async fn example(http: &fluxer::http::Http) {
+    /// use fluxer::prelude::*;
+    ///
+    /// let query = GetMessagesQuery {
+    ///     limit: Some(10),
+    ///     ..Default::default()
+    /// };
+    /// let messages = http.get_messages("channel_id", query).await.unwrap();
+    /// # }
+    /// ```
     pub async fn get_messages(
         &self,
         channel_id: &str,
@@ -130,6 +172,8 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Sends a text message. For embeds or other options, use
+    /// [`send_message_advanced`](Http::send_message_advanced).
     pub async fn send_message(
         &self,
         channel_id: &str,
@@ -140,6 +184,7 @@ impl Http {
         self.request_json(self.client.post(&url).json(&body)).await
     }
 
+    /// Sends a message with full control over the payload (embeds, TTS, replies, etc).
     pub async fn send_message_advanced(
         &self,
         channel_id: &str,
@@ -149,6 +194,7 @@ impl Http {
         self.request_json(self.client.post(&url).json(payload)).await
     }
 
+    /// Shorthand for sending embeds. Wraps [`send_message_advanced`](Http::send_message_advanced).
     pub async fn send_embed(
         &self,
         channel_id: &str,
@@ -182,6 +228,7 @@ impl Http {
     //     self.send_message_advanced(channel_id, &payload).await
     // }
 
+    /// Edits a message's content. Bot must be the author.
     pub async fn edit_message(
         &self,
         channel_id: &str,
@@ -196,6 +243,7 @@ impl Http {
         self.request_json(self.client.patch(&url).json(&body)).await
     }
 
+    /// Edits a message with full control over the payload.
     pub async fn edit_message_advanced(
         &self,
         channel_id: &str,
@@ -221,6 +269,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Deletes multiple messages at once. Way faster than deleting one by one.
     pub async fn bulk_delete_messages(
         &self,
         channel_id: &str,
@@ -234,6 +283,9 @@ impl Http {
         self.request_empty(self.client.post(&url).json(&body)).await
     }
 
+    /// Reacts to a message as the bot. `emoji` should be a unicode emoji like
+    /// `"👍"` or a custom emoji in `name:id` format. You can use
+    /// [`Emoji::to_reaction_string`] to get the right format.
     pub async fn add_reaction(
         &self,
         channel_id: &str,
@@ -262,6 +314,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Removes someone else's reaction. Needs Manage Messages permission.
     pub async fn remove_user_reaction(
         &self,
         channel_id: &str,
@@ -277,6 +330,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Gets the list of users who reacted with a specific emoji.
     pub async fn get_reactions(
         &self,
         channel_id: &str,
@@ -291,6 +345,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Removes all reactions from a message. Needs Manage Messages.
     pub async fn clear_reactions(
         &self,
         channel_id: &str,
@@ -346,6 +401,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Fetches an invite by code. Includes approximate member counts.
     pub async fn get_invite(&self, invite_code: &str) -> Result<Invite, ClientError> {
         let url = format!(
             "{}/invites/{}?with_counts=true",
@@ -392,6 +448,7 @@ impl Http {
         self.request_json(self.client.patch(&url).json(payload)).await
     }
 
+    /// Permanently deletes a guild. The bot must be the owner. (not tested)
     pub async fn delete_guild(&self, guild_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/guilds/{}", self.base_url, guild_id);
         self.request_empty(self.client.delete(&url)).await
@@ -402,6 +459,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Creates a channel in a guild. You need at least `name` in the payload.
     pub async fn create_channel(
         &self,
         guild_id: &str,
@@ -420,6 +478,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Fetches guild members. `limit` caps at 1000, `after` is a user ID for pagination.
     pub async fn get_guild_members(
         &self,
         guild_id: &str,
@@ -445,6 +504,8 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Edits a member's properties. To clear a nullable field like `nick`,
+    /// set it to `Some(None)`.
     pub async fn edit_member(
         &self,
         guild_id: &str,
@@ -550,6 +611,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// `avatar` should be a data URI if provided.
     pub async fn create_webhook(
         &self,
         channel_id: &str,
@@ -569,6 +631,8 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Executes a webhook (sends a message through it). Uses `wait=true` so
+    /// the response includes the full message object.
     pub async fn execute_webhook(
         &self,
         webhook_id: &str,

@@ -1,3 +1,5 @@
+//! Gateway client and connection management.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures::{SinkExt, StreamExt};
@@ -19,15 +21,29 @@ enum LoopControl {
     Reconnect { resume: bool },
 }
 
+/// Shared state passed into every event handler call. This is how you interact
+/// with the API from inside your event handlers.
+///
+/// ```rust,no_run
+/// # use fluxer::prelude::*;
+/// # async fn example(ctx: Context) {
+/// ctx.http.send_message("channel_id", "Hello!").await.unwrap();
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct Context {
+    /// HTTP client for REST API calls.
     pub http: Arc<Http>,
+    /// Raw gateway sender. You probably won't need this directly --
+    /// voice join/leave use it internally.
     pub gateway_tx: Arc<tokio::sync::mpsc::Sender<String>>,
     pub voice_states: Arc<Mutex<HashMap<String, VoiceState>>>,
     pub(crate) live_rooms: Arc<Mutex<HashMap<String, std::sync::Arc<livekit::Room>>>>,
 }
 
 impl Context {
+    /// Joins a voice channel. Sends an opcode 4 to the gateway and waits
+    /// up to 10 seconds for the server to send back connection details.
     pub async fn join_voice(
         &self,
         guild_id: &str,
@@ -82,6 +98,7 @@ impl Context {
         Ok(conn)
     }
 
+    /// Leaves a voice channel. Closes the LiveKit room and tells the gateway.
     pub async fn leave_voice(&self, guild_id: &str) -> Result<(), ClientError> {
         if let Some(room) = self.live_rooms.lock().await.remove(guild_id) {
             let _ = room.close().await;
@@ -105,6 +122,18 @@ impl Context {
     }
 }
 
+/// Builder for creating a [`Client`]. You need at minimum a token and an event handler.
+///
+/// ```rust,no_run
+/// use fluxer::prelude::*;
+/// # struct MyHandler;
+/// # #[async_trait::async_trait]
+/// # impl EventHandler for MyHandler {}
+///
+/// let client = Client::builder("token")
+///     .event_handler(MyHandler)
+///     .build();
+/// ```
 pub struct ClientBuilder {
     token: String,
     api_url: String,
@@ -120,11 +149,13 @@ impl ClientBuilder {
         }
     }
 
+    /// Sets the event handler. Required -- the builder panics at `.build()` without this.
     pub fn event_handler(mut self, handler: impl EventHandler + 'static) -> Self {
         self.handler = Some(Arc::new(handler));
         self
     }
 
+    /// Override the API base URL. Defaults to `https://api.fluxer.app/v1`.
     pub fn api_url(mut self, url: impl Into<String>) -> Self {
         self.api_url = url.into();
         self
@@ -139,6 +170,12 @@ impl ClientBuilder {
     }
 }
 
+/// The gateway client. Manages the WebSocket connection, heartbeating,
+/// reconnection, and event dispatch.
+///
+/// Call [`start`](Client::start) to connect. It runs until a fatal error
+/// happens (like an invalid token) and reconnects automatically on transient
+/// failures.
 pub struct Client {
     pub(crate) http: Arc<Http>,
     handler: Arc<dyn EventHandler>,
@@ -149,6 +186,8 @@ impl Client {
         ClientBuilder::new(token)
     }
 
+    /// Connects to the gateway and starts processing events. Blocks forever
+    /// unless a fatal error occurs.
     pub async fn start(&mut self) -> Result<(), ClientError> {
         let mut session_id: Option<String> = None;
         let mut resume_url: Option<String> = None;
