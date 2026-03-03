@@ -661,6 +661,62 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Sends a message with one or more file attachments. `content` is optional
+    /// if you just want to upload files with no text.
+    pub async fn send_files(
+        &self,
+        channel_id: &str,
+        files: Vec<AttachmentFile>,
+        content: Option<&str>,
+    ) -> Result<Message, ClientError> {
+        let payload = MessageCreatePayload {
+            content: content.map(|s| s.to_string()),
+            ..Default::default()
+        };
+        self.send_message_with_files(channel_id, &payload, files).await
+    }
+
+    /// Like [`send_message_advanced`](Http::send_message_advanced) but also uploads files as attachments.
+    pub async fn send_message_with_files(
+        &self,
+        channel_id: &str,
+        payload: &MessageCreatePayload,
+        files: Vec<AttachmentFile>,
+    ) -> Result<Message, ClientError> {
+        use reqwest::multipart::{Form, Part};
+
+        let url = format!("{}/channels/{}/messages", self.base_url, channel_id);
+
+        let mut payload = payload.clone();
+        payload.attachments = Some(
+            files
+                .iter()
+                .enumerate()
+                .map(|(i, f)| AttachmentMetadata {
+                    id: i as u64,
+                    filename: f.filename.clone(),
+                    description: None,
+                })
+                .collect(),
+        );
+        let json_string = serde_json::to_string(&payload)?;
+
+        let mut form = Form::new().text("payload_json", json_string);
+        for (i, file) in files.into_iter().enumerate() {
+            let content_type = file
+                .content_type
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            let part = Part::bytes(file.data)
+                .file_name(file.filename)
+                .mime_str(&content_type)
+                .map_err(ClientError::Http)?;
+            form = form.part(format!("files[{}]", i), part);
+        }
+
+        let req = self.client.post(&url).multipart(form);
+        self.request_json(req).await
+    }
+
     /// Executes a webhook (sends a message through it). Uses `wait=true` so
     /// the response includes the full message object.
     pub async fn execute_webhook(

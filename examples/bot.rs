@@ -147,6 +147,49 @@ impl EventHandler for Handler {
                 }
             }
 
+            "attach" => {
+                if args.is_empty() {
+                    let _ = ctx.http.send_message(channel_id, "Usage: `!attach <file path>`").await;
+                    return;
+                }
+                let path = std::path::Path::new(args);
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file")
+                    .to_string();
+                let content_type = match path.extension().and_then(|e| e.to_str()) {
+                    Some("mp3") => "audio/mpeg",
+                    Some("mp4") => "video/mp4",
+                    Some("mov") => "video/quicktime",
+                    Some("webm") => "video/webm",
+                    Some("png") => "image/png",
+                    Some("jpg") | Some("jpeg") => "image/jpeg",
+                    Some("gif") => "image/gif",
+                    Some("webp") => "image/webp",
+                    Some("txt") => "text/plain",
+                    Some("pdf") => "application/pdf",
+                    _ => "application/octet-stream",
+                };
+                match tokio::fs::read(path).await {
+                    Ok(data) => {
+                        let file = AttachmentFile {
+                            filename,
+                            data,
+                            content_type: Some(content_type.to_string()),
+                        };
+                        match ctx.http.send_files(channel_id, vec![file], None).await {
+                            Ok(msg) => println!("[attach] sent message {}", msg.id),
+                            Err(e) => eprintln!("[attach] error: {}", e),
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[attach] failed to read file: {}", e);
+                        let _ = ctx.http.send_message(channel_id, &format!("Failed to read file: {}", e)).await;
+                    }
+                }
+            }
+
             _ => {}
         }
     }
@@ -163,6 +206,7 @@ async fn main() {
 
     let mut client = Client::builder(&token)
         // .api_url("http://localhost:48763/api/v1") this is for self hosted instances
+        .api_url("https://fluxer.exeli.us/api/v1")
         .event_handler(Handler)
         .build();
 

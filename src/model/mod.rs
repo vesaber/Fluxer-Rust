@@ -233,6 +233,16 @@ pub struct Attachment {
     pub ephemeral: Option<bool>,
 }
 
+/// A file to attach when sending a message. Pass one or more of these to
+/// [`Http::send_files`] or [`Http::send_message_with_files`].
+pub struct AttachmentFile {
+    /// Filename shown in the client, e.g. `"image.png"`.
+    pub filename: String,
+    pub data: Vec<u8>,
+    /// MIME type, e.g. `"image/png"`. If `None`, defaults to `"application/octet-stream"`.
+    pub content_type: Option<String>,
+}
+
 /// Rich embed. Use [`EmbedBuilder`] to construct these.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Embed {
@@ -618,6 +628,16 @@ pub struct WebhooksUpdate {
 
 // --- Request payloads ---
 
+/// Attachment metadata entry for the `attachments` field of [`MessageCreatePayload`].
+/// `id` must match the index used in the corresponding `files[N]` multipart part.
+#[derive(Debug, Clone, Serialize)]
+pub struct AttachmentMetadata {
+    pub id: u64,
+    pub filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// Payload for sending/editing messages. All fields optional; only set what you need.
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct MessageCreatePayload {
@@ -633,6 +653,10 @@ pub struct MessageCreatePayload {
     pub message_reference: Option<MessageReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub referenced_message_id: Option<Snowflake>,
+    /// Required when uploading files. Populated automatically by
+    /// [`Http::send_message_with_files`]; you don't need to set this manually.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<AttachmentMetadata>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
