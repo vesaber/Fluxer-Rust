@@ -53,6 +53,7 @@
 //! This is because `rustls` 0.23+ doesn't auto-select a backend when both `ring` and
 //! `aws-lc-rs` are available (livekit pulls in the latter).
 
+pub mod cache;
 pub mod client;
 pub mod event;
 pub mod error;
@@ -62,6 +63,7 @@ pub mod voice;
 
 /// Re-exports the stuff you'll need most of the time so you can just `use fluxer::prelude::*;` and get going.
 pub mod prelude {
+    pub use crate::cache::Cache;
     pub use crate::client::{Client, ClientBuilder, Context};
     pub use crate::error::ClientError;
     pub use crate::event::EventHandler;

@@ -16,11 +16,34 @@ fn parse_command(content: &str) -> Option<(&str, &str)> {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn on_ready(&self, _ctx: Context, ready: Ready) {
+    async fn on_ready(&self, ctx: Context, ready: Ready) {
         println!("Logged in as {}", ready.user.username);
+        println!("current_user from cache: {:?}", ctx.cache.current_user().await);
+    }
+
+    async fn on_guild_create(&self, ctx: Context, guild: Guild) {
+        println!("GUILD_CREATE: {} (cache size: {})", guild.id, ctx.cache.guild_count().await);
     }
 
     async fn on_message(&self, ctx: Context, msg: Message) {
+        let user_cached = ctx.cache.user(&msg.author.id).await.is_some();
+        let ch_cached   = ctx.cache.channel(msg.channel_id.as_deref().unwrap_or("")).await.is_some();
+        let content_preview = msg.content.as_deref().unwrap_or("").chars().take(60).collect::<String>();
+        let attachments = msg.attachments.as_ref().map(|a| a.len()).unwrap_or(0);
+        let embeds = msg.embeds.as_ref().map(|e| e.len()).unwrap_or(0);
+        println!(
+            "[msg] author={}#{} channel={} guild={} | \"{}\" | attach={} embeds={} | cache: user={} ch={}",
+            msg.author.username,
+            msg.author.discriminator.as_deref().unwrap_or("0"),
+            msg.channel_id.as_deref().unwrap_or("?"),
+            msg.guild_id.as_deref().unwrap_or("DM"),
+            content_preview,
+            attachments,
+            embeds,
+            user_cached,
+            ch_cached,
+        );
+
         if msg.author.bot.unwrap_or(false) {
             return;
         }

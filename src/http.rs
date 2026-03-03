@@ -94,6 +94,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Fetches a user by ID.
     pub async fn get_user(&self, user_id: &str) -> Result<User, ClientError> {
         let url = format!("{}/users/{}", self.base_url, user_id);
         self.request_json(self.client.get(&url)).await
@@ -105,6 +106,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Fetches a channel by ID.
     pub async fn get_channel(&self, channel_id: &str) -> Result<Channel, ClientError> {
         let url = format!("{}/channels/{}", self.base_url, channel_id);
         self.request_json(self.client.get(&url)).await
@@ -160,6 +162,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Fetches a single message by ID.
     pub async fn get_message(
         &self,
         channel_id: &str,
@@ -257,6 +260,7 @@ impl Http {
         self.request_json(self.client.patch(&url).json(payload)).await
     }
 
+    /// Deletes a message. Bot must be the author, or have Manage Messages.
     pub async fn delete_message(
         &self,
         channel_id: &str,
@@ -300,6 +304,7 @@ impl Http {
         self.request_empty(self.client.put(&url).body("")).await
     }
 
+    /// Removes the bot's own reaction from a message.
     pub async fn remove_own_reaction(
         &self,
         channel_id: &str,
@@ -358,6 +363,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Removes all reactions for a specific emoji. Needs Manage Messages.
     pub async fn clear_reactions_for_emoji(
         &self,
         channel_id: &str,
@@ -372,11 +378,13 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Fetches pinned messages in a channel.
     pub async fn get_pins(&self, channel_id: &str) -> Result<PinsResponse, ClientError> {
         let url = format!("{}/channels/{}/messages/pins", self.base_url, channel_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Pins a message. Needs Manage Messages.
     pub async fn pin_message(
         &self,
         channel_id: &str,
@@ -389,6 +397,7 @@ impl Http {
         self.request_empty(self.client.put(&url).body("")).await
     }
 
+    /// Unpins a message. Needs Manage Messages.
     pub async fn unpin_message(
         &self,
         channel_id: &str,
@@ -410,6 +419,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Creates an invite for a channel.
     pub async fn create_invite(
         &self,
         channel_id: &str,
@@ -419,26 +429,31 @@ impl Http {
         self.request_json(self.client.post(&url).json(payload)).await
     }
 
+    /// Deletes an invite by code.
     pub async fn delete_invite(&self, invite_code: &str) -> Result<(), ClientError> {
         let url = format!("{}/invites/{}", self.base_url, invite_code);
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Returns all active invites for a channel.
     pub async fn get_channel_invites(&self, channel_id: &str) -> Result<Vec<Invite>, ClientError> {
         let url = format!("{}/channels/{}/invites", self.base_url, channel_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Returns all active invites for a guild.
     pub async fn get_guild_invites(&self, guild_id: &str) -> Result<Vec<Invite>, ClientError> {
         let url = format!("{}/guilds/{}/invites", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Fetches a guild by ID.
     pub async fn get_guild(&self, guild_id: &str) -> Result<Guild, ClientError> {
         let url = format!("{}/guilds/{}", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Edits guild settings. Only fields you set in the payload will change.
     pub async fn edit_guild(
         &self,
         guild_id: &str,
@@ -454,6 +469,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Returns all channels in a guild.
     pub async fn get_guild_channels(&self, guild_id: &str) -> Result<Vec<Channel>, ClientError> {
         let url = format!("{}/guilds/{}/channels", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
@@ -469,6 +485,7 @@ impl Http {
         self.request_json(self.client.post(&url).json(payload)).await
     }
 
+    /// Fetches a single guild member.
     pub async fn get_guild_member(
         &self,
         guild_id: &str,
@@ -495,6 +512,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Kicks a member from the guild.
     pub async fn kick_member(
         &self,
         guild_id: &str,
@@ -526,6 +544,7 @@ impl Http {
     //     self.request_empty(self.client.delete(&url)).await
     // }
 
+    /// Bans a member. `reason` is stored in the audit log.
     pub async fn ban_member(
         &self,
         guild_id: &str,
@@ -537,6 +556,7 @@ impl Http {
         self.request_empty(self.client.put(&url).json(&body)).await
     }
 
+    /// Removes a ban.
     pub async fn unban_member(
         &self,
         guild_id: &str,
@@ -546,16 +566,19 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Returns the guild's ban list.
     pub async fn get_guild_bans(&self, guild_id: &str) -> Result<Vec<serde_json::Value>, ClientError> {
         let url = format!("{}/guilds/{}/bans", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Returns all roles in a guild.
     pub async fn get_guild_roles(&self, guild_id: &str) -> Result<Vec<Role>, ClientError> {
         let url = format!("{}/guilds/{}/roles", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Creates a new role in a guild.
     pub async fn create_role(
         &self,
         guild_id: &str,
@@ -565,6 +588,7 @@ impl Http {
         self.request_json(self.client.post(&url).json(payload)).await
     }
 
+    /// Edits a role's properties.
     pub async fn edit_role(
         &self,
         guild_id: &str,
@@ -575,6 +599,7 @@ impl Http {
         self.request_json(self.client.patch(&url).json(payload)).await
     }
 
+    /// Deletes a role.
     pub async fn delete_role(
         &self,
         guild_id: &str,
@@ -584,11 +609,13 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Returns all custom emojis in a guild.
     pub async fn get_guild_emojis(&self, guild_id: &str) -> Result<Vec<Emoji>, ClientError> {
         let url = format!("{}/guilds/{}/emojis", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Deletes a custom emoji from a guild.
     pub async fn delete_guild_emoji(
         &self,
         guild_id: &str,
@@ -598,6 +625,7 @@ impl Http {
         self.request_empty(self.client.delete(&url)).await
     }
 
+    /// Returns all webhooks for a channel.
     pub async fn get_channel_webhooks(
         &self,
         channel_id: &str,
@@ -606,6 +634,7 @@ impl Http {
         self.request_json(self.client.get(&url)).await
     }
 
+    /// Returns all webhooks for a guild.
     pub async fn get_guild_webhooks(&self, guild_id: &str) -> Result<Vec<Webhook>, ClientError> {
         let url = format!("{}/guilds/{}/webhooks", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
@@ -626,6 +655,7 @@ impl Http {
         self.request_json(self.client.post(&url).json(&body)).await
     }
 
+    /// Deletes a webhook.
     pub async fn delete_webhook(&self, webhook_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/webhooks/{}", self.base_url, webhook_id);
         self.request_empty(self.client.delete(&url)).await

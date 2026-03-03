@@ -6,6 +6,7 @@ use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
+use crate::cache::Cache;
 use crate::error::ClientError;
 use crate::event::EventHandler;
 use crate::http::Http;
@@ -15,7 +16,6 @@ use std::time::Duration;
 const DEFAULT_API_URL: &str = "https://api.fluxer.app/v1";
 const DEFAULT_GATEWAY_URL: &str = "wss://gateway.fluxer.app/?v=1&encoding=json";
 
-#[allow(dead_code)]
 enum LoopControl {
     Done,
     Reconnect { resume: bool },
@@ -34,9 +34,13 @@ enum LoopControl {
 pub struct Context {
     /// HTTP client for REST API calls.
     pub http: Arc<Http>,
+    /// In-memory cache populated automatically from gateway events.
+    pub cache: Arc<Cache>,
     /// Raw gateway sender. You probably won't need this directly --
     /// voice join/leave use it internally.
     pub gateway_tx: Arc<tokio::sync::mpsc::Sender<String>>,
+    /// Per-guild voice state, populated from `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE`.
+    /// Used internally by `join_voice` / `leave_voice`.
     pub voice_states: Arc<Mutex<HashMap<String, VoiceState>>>,
     pub(crate) live_rooms: Arc<Mutex<HashMap<String, std::sync::Arc<livekit::Room>>>>,
 }
@@ -165,6 +169,7 @@ impl ClientBuilder {
         let http = Arc::new(Http::new(&self.token, self.api_url));
         Client {
             http,
+            cache: Cache::new(),
             handler: self.handler.expect("call .event_handler() before .build()"),
         }
     }
@@ -178,6 +183,7 @@ impl ClientBuilder {
 /// failures.
 pub struct Client {
     pub(crate) http: Arc<Http>,
+    cache: Arc<Cache>,
     handler: Arc<dyn EventHandler>,
 }
 
@@ -275,6 +281,7 @@ impl Client {
 
         let ctx = Context {
             http: self.http.clone(),
+            cache: self.cache.clone(),
             gateway_tx: Arc::new(gateway_tx),
             voice_states: Arc::new(Mutex::new(HashMap::new())),
             live_rooms: Arc::new(Mutex::new(HashMap::new())),
@@ -317,10 +324,7 @@ impl Client {
             let text = match msg_result? {
                 WsMessage::Text(t) => t,
                 WsMessage::Close(frame) => {
-                    let code = frame.as_ref().and_then(|f| {
-                        let c = f.code;
-                        Some(u16::from(c))
-                    }).unwrap_or(0);
+                    let code = frame.as_ref().map(|f| u16::from(f.code)).unwrap_or(0);
                     match code {
                         4004 => {
                             eprintln!("[fluxer-rs] Authentication failed (4004) — invalid token, shutting down.");
@@ -425,6 +429,7 @@ impl Client {
                     }
 
                     tokio::spawn(async move {
+                        cache_update(&ctx2.cache, &event_type, &data).await;
                         dispatch_event(event_type, data, ctx2, handler2).await;
                     });
                 }
@@ -455,6 +460,71 @@ impl Client {
         }
 
         Err(ClientError::ConnectionClosed)
+    }
+}
+
+async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
+    match event_type {
+        "READY" => {
+            if let Ok(user) = serde_json::from_value::<crate::model::User>(data["user"].clone()) {
+                *cache.current_user.write().await = Some(user);
+            }
+        }
+        "GUILD_CREATE" => {
+            if let Ok(guild) = serde_json::from_value::<crate::model::Guild>(data.clone()) {
+                let guild_id = guild.id.clone();
+
+                if let Some(channels) = data["channels"].as_array() {
+                    let mut ch_map = cache.channels.write().await;
+                    for ch_val in channels {
+                        if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(ch_val.clone()) {
+                            ch_map.insert(ch.id.clone(), ch);
+                        }
+                    }
+                }
+                
+                if let Some(members) = data["members"].as_array() {
+                    let mut user_map = cache.users.write().await;
+                    for m_val in members {
+                        if let Ok(user) = serde_json::from_value::<crate::model::User>(m_val["user"].clone()) {
+                            user_map.insert(user.id.clone(), user);
+                        }
+                    }
+                }
+                cache.guilds.write().await.insert(guild_id, guild);
+            }
+        }
+        "GUILD_UPDATE" => {
+            if let Ok(guild) = serde_json::from_value::<crate::model::Guild>(data.clone()) {
+                cache.guilds.write().await.insert(guild.id.clone(), guild);
+            }
+        }
+        "GUILD_DELETE" => {
+            if let Some(id) = data["id"].as_str() {
+                cache.guilds.write().await.remove(id);
+            }
+        }
+        "CHANNEL_CREATE" | "CHANNEL_UPDATE" => {
+            if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(data.clone()) {
+                cache.channels.write().await.insert(ch.id.clone(), ch);
+            }
+        }
+        "CHANNEL_DELETE" => {
+            if let Some(id) = data["id"].as_str() {
+                cache.channels.write().await.remove(id);
+            }
+        }
+        "GUILD_MEMBER_ADD" | "GUILD_MEMBER_UPDATE" => {
+            if let Ok(user) = serde_json::from_value::<crate::model::User>(data["user"].clone()) {
+                cache.users.write().await.insert(user.id.clone(), user);
+            }
+        }
+        "MESSAGE_CREATE" => {
+            if let Ok(user) = serde_json::from_value::<crate::model::User>(data["author"].clone()) {
+                cache.users.write().await.insert(user.id.clone(), user);
+            }
+        }
+        _ => {}
     }
 }
 

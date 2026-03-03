@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /// All entity IDs in the Fluxer API are snowflake strings.
 pub type Snowflake = String;
 
+/// A Fluxer user account. Both bot and human accounts share this struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: Snowflake,
@@ -26,6 +27,7 @@ pub struct User {
     pub premium: Option<u64>,
 }
 
+/// A guild (server). Full data arrives via `GUILD_CREATE`; [`UnavailableGuild`] is used before then.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Guild {
     pub id: Snowflake,
@@ -51,6 +53,7 @@ pub struct Guild {
     pub vanity_url_code: Option<String>,
 }
 
+/// A guild member. Wraps a [`User`] with guild-specific info like nickname and roles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Member {
     pub user: Option<User>,
@@ -79,6 +82,7 @@ impl Member {
     }
 }
 
+/// A guild role.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Role {
     pub id: Snowflake,
@@ -122,6 +126,7 @@ impl Emoji {
     }
 }
 
+/// A channel — text, voice, DM, category, etc. Check `kind` to tell them apart.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Channel {
     pub id: Snowflake,
@@ -149,6 +154,7 @@ pub struct Channel {
     pub last_pin_timestamp: Option<String>,
 }
 
+/// Numeric channel type values that map to [`Channel::kind`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChannelType {
@@ -171,6 +177,7 @@ pub struct PermissionOverwrite {
     pub deny: Option<String>,
 }
 
+/// A message sent in a channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub id: Snowflake,
@@ -211,6 +218,7 @@ pub struct PinsResponse {
     pub has_more: Option<bool>,
 }
 
+/// A file attached to a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attachment {
     pub id: Snowflake,
@@ -373,6 +381,7 @@ pub struct PartialChannel {
     pub kind: Option<u8>,
 }
 
+/// A webhook. Use [`Http::execute_webhook`](crate::http::Http::execute_webhook) to post through one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Webhook {
     pub id: Snowflake,
