@@ -206,7 +206,6 @@ async fn main() {
 
     let mut client = Client::builder(&token)
         // .api_url("http://localhost:48763/api/v1") this is for self hosted instances
-        .api_url("https://fluxer.exeli.us/api/v1")
         .event_handler(Handler)
         .build();
 
