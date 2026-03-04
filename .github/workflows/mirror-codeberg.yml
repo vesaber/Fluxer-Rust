@@ -23,6 +23,5 @@ jobs:
 
       - name: Push mirror to Codeberg
         run: |
-          git fetch origin '+refs/heads/*:refs/heads/*'
           git remote add codeberg ssh://git@codeberg.org/vesaber/Fluxer-Rust.git
-          git push codeberg --mirror
+          git push codeberg '+refs/remotes/origin/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
