@@ -1,0 +1,27 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure SSH
+        run: |
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< "${{ secrets.CODEBERG_SSH_KEY }}"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+          mkdir -p ~/.ssh
+          ssh-keyscan codeberg.org >> ~/.ssh/known_hosts
+
+      - name: Push mirror to Codeberg
+        run: |
+          git remote add codeberg ssh://git@codeberg.org/vesaber/Fluxer-Rust.git
+          git push codeberg --mirror
