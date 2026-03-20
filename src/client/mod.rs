@@ -166,6 +166,7 @@ impl ClientBuilder {
     }
 
     pub fn build(self) -> Client {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let http = Arc::new(Http::new(&self.token, self.api_url));
         Client {
             http,

@@ -1,5 +1,4 @@
 use fluxer::prelude::*;
-use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
 
@@ -114,10 +113,6 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Failed to install rustls crypto provider");
-
     let token = std::env::var("FLUXER_TOKEN")
         .expect("Set FLUXER_TOKEN to your bot token");
 
