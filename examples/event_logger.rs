@@ -362,7 +362,9 @@ impl EventHandler for Handler {
     }
 
     async fn on_channel_update_bulk(&self, _ctx: Context, e: ChannelUpdateBulk) {
-        println!("[channel_update_bulk] guild={} {} channel(s)", e.guild_id, e.channels.len());
+        println!("[channel_update_bulk] guild={} {} channel(s)",
+            e.guild_id.as_deref().unwrap_or("?"),
+            e.channels.len());
     }
 
     async fn on_unknown_event(&self, _ctx: Context, event_type: String, _data: serde_json::Value) {
