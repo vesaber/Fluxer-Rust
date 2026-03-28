@@ -132,7 +132,7 @@ pub struct Channel {
     pub id: Snowflake,
     /// Channel type, see [`ChannelType`] for values.
     #[serde(rename = "type")]
-    pub kind: Option<u8>,
+    pub kind: Option<u64>,
     pub guild_id: Option<Snowflake>,
     pub position: Option<i64>,
     pub permission_overwrites: Option<Vec<PermissionOverwrite>>,
@@ -201,7 +201,10 @@ pub struct Message {
     /// 0 = default, 19 = reply, etc.
     #[serde(rename = "type")]
     pub kind: Option<u8>,
+    /// Full message object for the message being replied to, if the server includes it.
     pub referenced_message: Option<Box<Message>>,
+    /// Reference metadata (message/channel/guild IDs) always present on reply messages.
+    pub message_reference: Option<MessageReference>,
     pub flags: Option<u64>,
     pub stickers: Option<Vec<serde_json::Value>>,
 }
@@ -626,6 +629,309 @@ pub struct WebhooksUpdate {
     pub guild_id: Option<Snowflake>,
 }
 
+/// Full guild state sync, sent in response to an op 14 subscription request.
+/// Contains the same data as GUILD_CREATE but for already-known guilds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildSync {
+    pub id: Snowflake,
+    pub roles: Option<Vec<Role>>,
+    pub channels: Option<Vec<Channel>>,
+    pub emojis: Option<Vec<Emoji>>,
+    pub stickers: Option<Vec<serde_json::Value>>,
+    pub members: Option<Vec<Member>>,
+    pub member_count: Option<u64>,
+    pub online_count: Option<u64>,
+    pub presences: Option<Vec<serde_json::Value>>,
+    pub voice_states: Option<Vec<serde_json::Value>>,
+    pub joined_at: Option<String>,
+    pub unavailable: Option<bool>,
+}
+
+/// Custom status set by a user (the emoji + text shown under their name).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomStatus {
+    pub text: Option<String>,
+    pub emoji_id: Option<Snowflake>,
+    pub emoji_name: Option<String>,
+    pub expires_at: Option<String>,
+}
+
+/// Fired when a user's presence (status/activity) changes in a guild.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresenceUpdate {
+    pub user: User,
+    pub guild_id: Option<Snowflake>,
+    /// `"online"`, `"idle"`, `"dnd"`, or `"offline"`.
+    pub status: Option<String>,
+    pub mobile: Option<bool>,
+    pub afk: Option<bool>,
+    pub custom_status: Option<CustomStatus>,
+    pub activities: Option<Vec<serde_json::Value>>,
+    pub client_status: Option<serde_json::Value>,
+}
+
+/// Multiple presence updates batched together. `guild_id` is set when the
+/// presences all belong to the same guild.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresenceUpdateBulk {
+    pub presences: Vec<PresenceUpdate>,
+    pub guild_id: Option<Snowflake>,
+}
+
+/// Fired when the current user's settings change. Structure varies; use
+/// the raw `data` field to access specific setting keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSettingsUpdate {
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+/// Partial user fields sent with USER_UPDATE.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserUpdate {
+    pub id: Snowflake,
+    pub username: String,
+    pub discriminator: Option<String>,
+    pub avatar: Option<String>,
+    pub flags: Option<u64>,
+}
+
+/// Fired when a channel is marked as read from another session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageAck {
+    pub channel_id: Option<Snowflake>,
+    pub message_id: Option<Snowflake>,
+}
+
+/// A single session entry inside [`SessionsReplace`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionEntry {
+    pub session_id: String,
+    /// `"online"`, `"idle"`, `"dnd"`, `"invisible"`, or `"offline"`.
+    pub status: Option<String>,
+    pub mobile: Option<bool>,
+    pub afk: Option<bool>,
+}
+
+/// Replaces all active sessions for the current user. Sent when another
+/// device connects or changes presence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionsReplace(pub Vec<SessionEntry>);
+
+/// Relationship types from the Fluxer source (`RelationshipTypes` enum).
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelationshipType {
+    Friend = 1,
+    Blocked = 2,
+    IncomingRequest = 3,
+    OutgoingRequest = 4,
+}
+
+/// Fired when a relationship is added (friend accepted, request sent, block added, etc).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipAdd {
+    /// The other user's ID.
+    pub id: Snowflake,
+    /// See [`RelationshipType`] for values.
+    #[serde(rename = "type")]
+    pub kind: u8,
+}
+
+/// Fired when an existing relationship changes type (e.g. pending → friend).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipUpdate {
+    pub id: Snowflake,
+    #[serde(rename = "type")]
+    pub kind: u8,
+}
+
+/// Fired when a relationship is removed (unfriend, unblock, request cancelled).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipRemove {
+    pub id: Snowflake,
+}
+
+/// Voice state for a participant inside a DM/group call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallVoiceState {
+    pub user_id: Snowflake,
+    pub channel_id: Option<Snowflake>,
+    pub session_id: Option<String>,
+    pub self_mute: Option<bool>,
+    pub self_deaf: Option<bool>,
+    pub self_video: Option<bool>,
+    pub self_stream: Option<bool>,
+}
+
+/// A VC was started in a DM or group DM.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallCreate {
+    pub channel_id: Snowflake,
+    pub message_id: Option<Snowflake>,
+    pub region: Option<String>,
+    pub voice_states: Option<Vec<CallVoiceState>>,
+    /// User IDs of people currently being rung.
+    pub ringing: Option<Vec<Snowflake>>,
+}
+
+/// A call's state changed (someone joined/left, region changed, etc).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallUpdate {
+    pub channel_id: Snowflake,
+    pub message_id: Option<Snowflake>,
+    pub region: Option<String>,
+    pub voice_states: Option<Vec<CallVoiceState>>,
+    pub ringing: Option<Vec<Snowflake>>,
+}
+
+/// A VC ended or was declined.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallDelete {
+    pub channel_id: Snowflake,
+}
+
+/// A user was added to a group DM channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelRecipientAdd {
+    pub channel_id: Snowflake,
+    pub user: User,
+}
+
+/// A user was removed from a group DM channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelRecipientRemove {
+    pub channel_id: Snowflake,
+    pub user: User,
+}
+
+/// A batch of reactions added to a single message (server side debounce).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageReactionAddMany {
+    pub channel_id: Option<Snowflake>,
+    pub message_id: Snowflake,
+    pub guild_id: Option<Snowflake>,
+    /// Each entry has `user_id`, `emoji` (`id`/`name`), and optionally `member`.
+    pub reactions: Vec<serde_json::Value>,
+}
+
+/// Lazy passive guild update: channel last-message IDs, voice states, and
+/// channel create/update/delete diffs. Sent for large guilds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PassiveUpdates {
+    pub guild_id: Snowflake,
+    /// Map of `channel_id → last_message_id`.
+    pub channels: Option<serde_json::Value>,
+    pub voice_states: Option<Vec<serde_json::Value>>,
+    pub created_channels: Option<Vec<Channel>>,
+    pub updated_channels: Option<Vec<Channel>>,
+    pub deleted_channel_ids: Option<Vec<Snowflake>>,
+}
+
+/// An op inside a [`GuildMemberListUpdate`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemberListOp {
+    /// `"SYNC"`, `"INSERT"`, `"UPDATE"`, `"DELETE"`, or `"INVALIDATE"`.
+    pub op: String,
+    /// `[start, end]` range, present for SYNC and INVALIDATE.
+    pub range: Option<[u64; 2]>,
+    /// Item index, present for INSERT / UPDATE / DELETE.
+    pub index: Option<u64>,
+    /// Batch of items for SYNC.
+    pub items: Option<Vec<serde_json::Value>>,
+    /// Single item for INSERT / UPDATE / DELETE.
+    pub item: Option<serde_json::Value>,
+}
+
+/// Incremental member list update for a guild channel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildMemberListUpdate {
+    pub guild_id: Snowflake,
+    /// List identifier (usually matches `channel_id`).
+    pub id: String,
+    pub channel_id: Option<Snowflake>,
+    pub member_count: Option<u64>,
+    pub online_count: Option<u64>,
+    pub groups: Option<Vec<serde_json::Value>>,
+    pub ops: Vec<MemberListOp>,
+}
+
+/// Response to REQUEST_GUILD_MEMBERS (op 8). Contains a chunk of guild members.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildMembersChunk {
+    pub guild_id: Snowflake,
+    pub members: Vec<Member>,
+    pub chunk_index: u32,
+    pub chunk_count: u32,
+    pub not_found: Option<Vec<Snowflake>>,
+    pub presences: Option<Vec<serde_json::Value>>,
+    pub nonce: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceServerUpdate {
+    pub token: String,
+    pub guild_id: Option<Snowflake>,
+    pub endpoint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Resumed {
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelPinsAck {
+    pub channel_id: Snowflake,
+    pub timestamp: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserPinnedDmsUpdate {
+    pub pinned: Vec<Snowflake>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserNoteUpdate {
+    pub id: Snowflake,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserConnectionsUpdate {
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserGuildSettingsUpdate {
+    pub guild_id: Option<Snowflake>,
+    #[serde(flatten)]
+    pub settings: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthSessionChange {
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedMessageCreate {
+    pub message: Message,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedMessageDelete {
+    pub message_id: Snowflake,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentMentionDelete {
+    pub message_id: Snowflake,
+}
+
 // --- Request payloads ---
 
 /// Attachment metadata entry for the `attachments` field of [`MessageCreatePayload`].
@@ -659,7 +965,7 @@ pub struct MessageCreatePayload {
     pub attachments: Option<Vec<AttachmentMetadata>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageReference {
     pub message_id: Snowflake,
     pub channel_id: Option<Snowflake>,
@@ -800,6 +1106,58 @@ pub struct EditGuildPayload {
     pub default_message_notifications: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub explicit_content_filter: Option<u64>,
+}
+
+/// Query payload for [`Http::search_messages`]. All fields are optional — set
+/// only the filters you need. `scope` defaults to `"current"` server side.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct SearchMessagesQuery {
+    /// Results per page, 1–25.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hits_per_page: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
+    /// Full-text content search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Restrict to these channel IDs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<Vec<Snowflake>>,
+    /// Restrict to messages by these author IDs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<Vec<Snowflake>>,
+    /// Filter by attachment/embed type: `"image"`, `"video"`, `"file"`,
+    /// `"sticker"`, `"embed"`, `"link"`, `"poll"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<bool>,
+    /// `"timestamp"` or `"relevance"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_by: Option<String>,
+    /// `"asc"` or `"desc"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<String>,
+    /// `"current"`, `"open_dms"`, `"all_dms"`, `"all_guilds"`, or `"all"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+/// Returned by [`Http::search_messages`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchMessagesResponse {
+    pub messages: Vec<Message>,
+    pub total: u64,
+    pub hits_per_page: u8,
+    pub page: u32,
+}
+
+/// A single entry for [`Http::ack_bulk`]. Marks `message_id` as the last-read
+/// message in `channel_id`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReadStateAck {
+    pub channel_id: Snowflake,
+    pub message_id: Snowflake,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

@@ -3,7 +3,7 @@
 //! Handles auth headers, serialization, and error handling. You'll usually
 //! access this through `ctx.http` in your event handlers.
 
-use reqwest::{ header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE}, StatusCode, };
+use reqwest::{ header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, USER_AGENT}, StatusCode, };
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use crate::error::ClientError;
@@ -34,10 +34,19 @@ impl Http {
     /// Creates a new HTTP client. The token is sent as `Bot {token}` in the
     /// Authorization header on every request.
     pub fn new(token: &str, base_url: String) -> Self {
+        Self::new_with_prefix(token, base_url, &format!("Bot {}", token))
+    }
+
+    /// Creates a new HTTP client for a user token (no `Bot ` prefix).
+    pub fn new_user(token: &str, base_url: String) -> Self {
+        Self::new_with_prefix(token, base_url, token)
+    }
+
+    fn new_with_prefix(token: &str, base_url: String, auth_value: &str) -> Self {
         let mut headers = HeaderMap::new();
-        let auth_value = format!("Bot {}", token);
-        headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth_value).unwrap());
+        headers.insert(AUTHORIZATION, HeaderValue::from_str(auth_value).unwrap());
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(USER_AGENT, HeaderValue::from_static("fluxer-rust"));
 
         Self {
             client: reqwest::Client::builder()
@@ -212,24 +221,26 @@ impl Http {
         self.send_message_advanced(channel_id, &payload).await
     }
 
-    // pub async fn reply_to_message(
-    //     &self,
-    //     channel_id: &str,
-    //     message_id: &str,
-    //     content: &str,
-    // ) -> Result<Message, ClientError> {
-    //     let payload = MessageCreatePayload {
-    //         content: Some(content.to_string()),
-    //         message_reference: Some(MessageReference {
-    //             message_id: message_id.to_string(),
-    //             channel_id: None,
-    //             guild_id: None,
-    //             fail_if_not_exists: Some(true),
-    //         }),
-    //         ..Default::default()
-    //     };
-    //     self.send_message_advanced(channel_id, &payload).await
-    // }
+    /// Replies to a specific message. The client will render it as a reply thread.
+    /// Fails with a 404 if the referenced message no longer exists.
+    pub async fn reply_to_message(
+        &self,
+        channel_id: &str,
+        message_id: &str,
+        content: &str,
+    ) -> Result<Message, ClientError> {
+        let payload = MessageCreatePayload {
+            content: Some(content.to_string()),
+            message_reference: Some(MessageReference {
+                message_id: message_id.to_string(),
+                channel_id: None,
+                guild_id: None,
+                fail_if_not_exists: Some(true),
+            }),
+            ..Default::default()
+        };
+        self.send_message_advanced(channel_id, &payload).await
+    }
 
     /// Edits a message's content. Bot must be the author.
     pub async fn edit_message(
@@ -534,15 +545,33 @@ impl Http {
         self.request_json(self.client.patch(&url).json(payload)).await
     }
 
-    // pub async fn add_member_role(&self, guild_id: &str, user_id: &str, role_id: &str) -> Result<(), ClientError> {
-    //     let url = format!("{}/guilds/{}/members/{}/roles/{}", self.base_url, guild_id, user_id, role_id);
-    //     self.request_empty(self.client.put(&url).body("")).await
-    // }
+    /// Grants a role to a guild member. Requires Manage Roles.
+    pub async fn add_member_role(
+        &self,
+        guild_id: &str,
+        user_id: &str,
+        role_id: &str,
+    ) -> Result<(), ClientError> {
+        let url = format!(
+            "{}/guilds/{}/members/{}/roles/{}",
+            self.base_url, guild_id, user_id, role_id
+        );
+        self.request_empty(self.client.put(&url).body("")).await
+    }
 
-    // pub async fn remove_member_role(&self, guild_id: &str, user_id: &str, role_id: &str) -> Result<(), ClientError> {
-    //     let url = format!("{}/guilds/{}/members/{}/roles/{}", self.base_url, guild_id, user_id, role_id);
-    //     self.request_empty(self.client.delete(&url)).await
-    // }
+    /// Removes a role from a guild member. Requires Manage Roles.
+    pub async fn remove_member_role(
+        &self,
+        guild_id: &str,
+        user_id: &str,
+        role_id: &str,
+    ) -> Result<(), ClientError> {
+        let url = format!(
+            "{}/guilds/{}/members/{}/roles/{}",
+            self.base_url, guild_id, user_id, role_id
+        );
+        self.request_empty(self.client.delete(&url)).await
+    }
 
     /// Bans a member. `reason` is stored in the audit log.
     pub async fn ban_member(
@@ -715,6 +744,24 @@ impl Http {
 
         let req = self.client.post(&url).multipart(form);
         self.request_json(req).await
+    }
+
+    /// Searches messages across the platform. See [`SearchMessagesQuery`] for
+    /// all available filters (content, author, channel, attachments, etc).
+    pub async fn search_messages(
+        &self,
+        query: &SearchMessagesQuery,
+    ) -> Result<SearchMessagesResponse, ClientError> {
+        let url = format!("{}/search/messages", self.base_url);
+        self.request_json(self.client.post(&url).json(query)).await
+    }
+
+    /// Marks multiple channels as read in a single request. Pass up to 100
+    /// `(channel_id, last_message_id)` pairs.
+    pub async fn ack_bulk(&self, states: Vec<ReadStateAck>) -> Result<(), ClientError> {
+        let url = format!("{}/read-states/ack-bulk", self.base_url);
+        let body = json!({ "read_states": states });
+        self.request_empty(self.client.post(&url).json(&body)).await
     }
 
     /// Executes a webhook (sends a message through it). Uses `wait=true` so

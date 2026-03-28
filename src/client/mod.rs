@@ -124,6 +124,24 @@ impl Context {
         self.voice_states.lock().await.remove(guild_id);
         Ok(())
     }
+
+    /// Subscribes to a guild's events (op 14). Called automatically for all
+    /// guilds on READY, but you can call this manually if you join a new guild
+    /// after the initial connection (e.g. from inside `on_guild_create`).
+    pub async fn subscribe_guild(&self, guild_id: &str) -> Result<(), ClientError> {
+        let payload = serde_json::json!({
+            "op": 14,
+            "d": {
+                "subscriptions": {
+                    guild_id: { "active": true, "typing": true }
+                }
+            }
+        });
+        self.gateway_tx
+            .send(payload.to_string())
+            .await
+            .map_err(|e| ClientError::Voice(e.to_string()))
+    }
 }
 
 /// Builder for creating a [`Client`]. You need at minimum a token and an event handler.
@@ -142,6 +160,7 @@ pub struct ClientBuilder {
     token: String,
     api_url: String,
     handler: Option<Arc<dyn EventHandler>>,
+    user_token: bool,
 }
 
 impl ClientBuilder {
@@ -150,7 +169,14 @@ impl ClientBuilder {
             token: token.into(),
             api_url: DEFAULT_API_URL.to_string(),
             handler: None,
+            user_token: false,
         }
+    }
+
+    /// Use a user token instead of a bot token (no `Bot ` prefix on HTTP requests).
+    pub fn user_token(mut self) -> Self {
+        self.user_token = true;
+        self
     }
 
     /// Sets the event handler. Required -- the builder panics at `.build()` without this.
@@ -167,7 +193,11 @@ impl ClientBuilder {
 
     pub fn build(self) -> Client {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let http = Arc::new(Http::new(&self.token, self.api_url));
+        let http = if self.user_token {
+            Arc::new(Http::new_user(&self.token, self.api_url))
+        } else {
+            Arc::new(Http::new(&self.token, self.api_url))
+        };
         Client {
             http,
             cache: Cache::new(),
@@ -427,6 +457,26 @@ impl Client {
                                 rurl.trim_end_matches('/')
                             ));
                         }
+                        // Subscribe to all guilds (op 14) so events are received.
+                        // Without this, self-bots only receive DM and system events.
+                        if let Some(guilds) = data["guilds"].as_array() {
+                            let mut subscriptions = serde_json::Map::new();
+                            for g in guilds {
+                                if let Some(id) = g["id"].as_str() {
+                                    subscriptions.insert(
+                                        id.to_string(),
+                                        serde_json::json!({ "active": true, "typing": true }),
+                                    );
+                                }
+                            }
+                            if !subscriptions.is_empty() {
+                                let lazy = serde_json::json!({
+                                    "op": 14,
+                                    "d": { "subscriptions": subscriptions }
+                                });
+                                let _ = ctx.gateway_tx.send(lazy.to_string()).await;
+                            }
+                        }
                     }
 
                     tokio::spawn(async move {
@@ -495,6 +545,24 @@ async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
                 cache.guilds.write().await.insert(guild_id, guild);
             }
         }
+        "GUILD_SYNC" => {
+            if let Some(channels) = data["channels"].as_array() {
+                let mut ch_map = cache.channels.write().await;
+                for ch_val in channels {
+                    if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(ch_val.clone()) {
+                        ch_map.insert(ch.id.clone(), ch);
+                    }
+                }
+            }
+            if let Some(members) = data["members"].as_array() {
+                let mut user_map = cache.users.write().await;
+                for m_val in members {
+                    if let Ok(user) = serde_json::from_value::<crate::model::User>(m_val["user"].clone()) {
+                        user_map.insert(user.id.clone(), user);
+                    }
+                }
+            }
+        }
         "GUILD_UPDATE" => {
             if let Ok(guild) = serde_json::from_value::<crate::model::Guild>(data.clone()) {
                 cache.guilds.write().await.insert(guild.id.clone(), guild);
@@ -536,13 +604,18 @@ async fn dispatch_event(
     handler: Arc<dyn EventHandler>,
 ) {
     use crate::model::{
-        Channel, ChannelPinsUpdate, ChannelUpdateBulk, Guild, GuildBanAdd, GuildBanRemove,
-        GuildEmojisUpdate, GuildMemberAdd, GuildMemberRemove, GuildMemberUpdate,
-        GuildRoleCreate, GuildRoleDelete, GuildRoleUpdate, GuildRoleUpdateBulk,
-        GuildStickersUpdate, InviteCreate, InviteDelete, WebhooksUpdate,
-        Message, MessageDelete, MessageDeleteBulk, MessageUpdate, ReactionAdd,
-        ReactionRemove, ReactionRemoveAll, ReactionRemoveEmoji, Ready, TypingStart,
-        UnavailableGuild,
+        AuthSessionChange, CallCreate, CallDelete, CallUpdate, Channel, ChannelPinsAck,
+        ChannelPinsUpdate, ChannelRecipientAdd, ChannelRecipientRemove, ChannelUpdateBulk, Guild,
+        GuildBanAdd, GuildBanRemove, GuildEmojisUpdate, GuildMemberAdd, GuildMemberListUpdate,
+        GuildMemberRemove, GuildMembersChunk, GuildMemberUpdate, GuildRoleCreate, GuildRoleDelete,
+        GuildRoleUpdate, GuildRoleUpdateBulk, GuildStickersUpdate, GuildSync, InviteCreate,
+        InviteDelete, Message, MessageAck, MessageDelete, MessageDeleteBulk, MessageReactionAddMany,
+        MessageUpdate, PassiveUpdates, PresenceUpdate, PresenceUpdateBulk, ReactionAdd, ReactionRemove,
+        ReactionRemoveAll, ReactionRemoveEmoji, Ready, RecentMentionDelete, RelationshipAdd,
+        RelationshipRemove, RelationshipUpdate, Resumed, SavedMessageCreate, SavedMessageDelete,
+        SessionsReplace, TypingStart, UnavailableGuild, UserConnectionsUpdate, UserGuildSettingsUpdate,
+        UserNoteUpdate, UserPinnedDmsUpdate, UserSettingsUpdate, UserUpdate, VoiceServerUpdate,
+        WebhooksUpdate,
     };
     use crate::model::voice::VoiceState;
 
@@ -561,7 +634,7 @@ async fn dispatch_event(
 
     match event_type.as_str() {
         "READY"   => dispatch!(on_ready, Ready),
-        "RESUMED" => eprintln!("[fluxer-rs] Session resumed successfully."),
+        "RESUMED" => dispatch!(on_resumed, Resumed),
         "MESSAGE_CREATE"      => dispatch!(on_message, Message),
         "MESSAGE_UPDATE"      => dispatch!(on_message_update, MessageUpdate),
         "MESSAGE_DELETE"      => dispatch!(on_message_delete, MessageDelete),
@@ -575,6 +648,7 @@ async fn dispatch_event(
         "CHANNEL_UPDATE"      => dispatch!(on_channel_update, Channel),
         "CHANNEL_DELETE"      => dispatch!(on_channel_delete, Channel),
         "CHANNEL_PINS_UPDATE" => dispatch!(on_channel_pins_update, ChannelPinsUpdate),
+        "CHANNEL_PINS_ACK"    => dispatch!(on_channel_pins_ack, ChannelPinsAck),
         "GUILD_CREATE" => dispatch!(on_guild_create, Guild),
         "GUILD_UPDATE" => dispatch!(on_guild_update, Guild),
         "GUILD_DELETE" => dispatch!(on_guild_delete, UnavailableGuild),
@@ -617,25 +691,61 @@ async fn dispatch_event(
                     endpoint: String::new(),
                     session_id: None,
                 });
-                entry.token = token;
+                entry.token = token.clone();
                 entry.endpoint = if endpoint.starts_with("wss://")
                     || endpoint.starts_with("https://")
                 {
-                    endpoint
+                    endpoint.clone()
                 } else {
                     format!("wss://{}", endpoint)
                 };
             }
+            match serde_json::from_value::<VoiceServerUpdate>(data.clone()) {
+                Ok(v) => handler.on_voice_server_update(ctx, v).await,
+                Err(e) => eprintln!("[fluxer-rs] Failed to deserialize VOICE_SERVER_UPDATE: {}", e),
+            }
         }
 
+        "PRESENCE_UPDATE"       => dispatch!(on_presence_update, PresenceUpdate),
+        "PRESENCE_UPDATE_BULK"  => dispatch!(on_presence_update_bulk, PresenceUpdateBulk),
+        "USER_SETTINGS_UPDATE"  => dispatch!(on_user_settings_update, UserSettingsUpdate),
+        "USER_UPDATE"           => dispatch!(on_user_update, UserUpdate),
+        "USER_GUILD_SETTINGS_UPDATE" => dispatch!(on_user_guild_settings_update, UserGuildSettingsUpdate),
+        "USER_PINNED_DMS_UPDATE"     => dispatch!(on_user_pinned_dms_update, UserPinnedDmsUpdate),
+        "USER_NOTE_UPDATE"           => dispatch!(on_user_note_update, UserNoteUpdate),
+        "USER_CONNECTIONS_UPDATE"    => dispatch!(on_user_connections_update, UserConnectionsUpdate),
+        "AUTH_SESSION_CHANGE"        => dispatch!(on_auth_session_change, AuthSessionChange),
+        "MESSAGE_ACK"           => dispatch!(on_message_ack, MessageAck),
+        "SESSIONS_REPLACE" => {
+            match serde_json::from_value::<Vec<crate::model::SessionEntry>>(data.clone()) {
+                Ok(v) => handler.on_sessions_replace(ctx, SessionsReplace(v)).await,
+                Err(e) => eprintln!("[fluxer-rs] Failed to deserialize SESSIONS_REPLACE: {}", e),
+            }
+        }
+        "RELATIONSHIP_ADD"    => dispatch!(on_relationship_add, RelationshipAdd),
+        "RELATIONSHIP_UPDATE" => dispatch!(on_relationship_update, RelationshipUpdate),
+        "RELATIONSHIP_REMOVE" => dispatch!(on_relationship_remove, RelationshipRemove),
+        "CALL_CREATE" => dispatch!(on_call_create, CallCreate),
+        "CALL_UPDATE" => dispatch!(on_call_update, CallUpdate),
+        "CALL_DELETE" => dispatch!(on_call_delete, CallDelete),
+        "CHANNEL_RECIPIENT_ADD"    => dispatch!(on_channel_recipient_add, ChannelRecipientAdd),
+        "CHANNEL_RECIPIENT_REMOVE" => dispatch!(on_channel_recipient_remove, ChannelRecipientRemove),
+        "MESSAGE_REACTION_ADD_MANY" => dispatch!(on_message_reaction_add_many, MessageReactionAddMany),
+        "RECENT_MENTION_DELETE"     => dispatch!(on_recent_mention_delete, RecentMentionDelete),
+        "SAVED_MESSAGE_CREATE"      => dispatch!(on_saved_message_create, SavedMessageCreate),
+        "SAVED_MESSAGE_DELETE"      => dispatch!(on_saved_message_delete, SavedMessageDelete),
+        "PASSIVE_UPDATES"           => dispatch!(on_passive_updates, PassiveUpdates),
+        "GUILD_MEMBER_LIST_UPDATE"  => dispatch!(on_guild_member_list_update, GuildMemberListUpdate),
+        "GUILD_MEMBERS_CHUNK"       => dispatch!(on_guild_members_chunk, GuildMembersChunk),
+        "GUILD_SYNC"                => dispatch!(on_guild_sync, GuildSync),
+
         "INTERACTION_CREATE"
-        | "SESSIONS_REPLACE"
         | "STAGE_INSTANCE_CREATE"
         | "STAGE_INSTANCE_UPDATE"
         | "STAGE_INSTANCE_DELETE" => {}
 
         other => {
-            eprintln!("[fluxer-rs] Unknown event: {}", other);
+            handler.on_unknown_event(ctx, other.to_string(), data).await;
         }
     }
 }

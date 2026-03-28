@@ -101,4 +101,66 @@ pub trait EventHandler: Send + Sync {
     async fn on_invite_delete(&self, _ctx: Context, _event: InviteDelete) {}
 
     async fn on_webhooks_update(&self, _ctx: Context, _event: WebhooksUpdate) {}
+
+    async fn on_presence_update(&self, _ctx: Context, _event: PresenceUpdate) {}
+
+    async fn on_presence_update_bulk(&self, _ctx: Context, _event: PresenceUpdateBulk) {}
+
+    async fn on_user_settings_update(&self, _ctx: Context, _event: UserSettingsUpdate) {}
+
+    async fn on_user_update(&self, _ctx: Context, _event: UserUpdate) {}
+
+    async fn on_message_ack(&self, _ctx: Context, _event: MessageAck) {}
+
+    async fn on_sessions_replace(&self, _ctx: Context, _event: SessionsReplace) {}
+
+    async fn on_relationship_add(&self, _ctx: Context, _event: RelationshipAdd) {}
+
+    async fn on_relationship_update(&self, _ctx: Context, _event: RelationshipUpdate) {}
+
+    async fn on_relationship_remove(&self, _ctx: Context, _event: RelationshipRemove) {}
+
+    async fn on_call_create(&self, _ctx: Context, _event: CallCreate) {}
+
+    async fn on_call_update(&self, _ctx: Context, _event: CallUpdate) {}
+
+    async fn on_call_delete(&self, _ctx: Context, _event: CallDelete) {}
+
+    async fn on_channel_recipient_add(&self, _ctx: Context, _event: ChannelRecipientAdd) {}
+
+    async fn on_channel_recipient_remove(&self, _ctx: Context, _event: ChannelRecipientRemove) {}
+
+    async fn on_message_reaction_add_many(&self, _ctx: Context, _event: MessageReactionAddMany) {}
+
+    async fn on_passive_updates(&self, _ctx: Context, _event: PassiveUpdates) {}
+
+    async fn on_guild_member_list_update(&self, _ctx: Context, _event: GuildMemberListUpdate) {}
+
+    async fn on_guild_sync(&self, _ctx: Context, _event: GuildSync) {}
+
+    async fn on_unknown_event(&self, _ctx: Context, _event_type: String, _data: serde_json::Value) {}
+
+    async fn on_guild_members_chunk(&self, _ctx: Context, _event: GuildMembersChunk) {}
+
+    async fn on_voice_server_update(&self, _ctx: Context, _event: VoiceServerUpdate) {}
+
+    async fn on_resumed(&self, _ctx: Context, _event: Resumed) {}
+
+    async fn on_channel_pins_ack(&self, _ctx: Context, _event: ChannelPinsAck) {}
+
+    async fn on_user_pinned_dms_update(&self, _ctx: Context, _event: UserPinnedDmsUpdate) {}
+
+    async fn on_user_note_update(&self, _ctx: Context, _event: UserNoteUpdate) {}
+
+    async fn on_user_connections_update(&self, _ctx: Context, _event: UserConnectionsUpdate) {}
+
+    async fn on_user_guild_settings_update(&self, _ctx: Context, _event: UserGuildSettingsUpdate) {}
+
+    async fn on_auth_session_change(&self, _ctx: Context, _event: AuthSessionChange) {}
+
+    async fn on_saved_message_create(&self, _ctx: Context, _event: SavedMessageCreate) {}
+
+    async fn on_saved_message_delete(&self, _ctx: Context, _event: SavedMessageDelete) {}
+
+    async fn on_recent_mention_delete(&self, _ctx: Context, _event: RecentMentionDelete) {}
 }

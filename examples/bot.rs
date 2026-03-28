@@ -189,6 +189,38 @@ impl EventHandler for Handler {
                 }
             }
 
+            "addrole" => {
+                let guild_id = match &msg.guild_id {
+                    Some(id) => id.as_str(),
+                    None => return,
+                };
+                let parts: Vec<&str> = args.split_whitespace().collect();
+                if parts.len() != 2 {
+                    let _ = ctx.http.send_message(channel_id, "Usage: `!addrole <user_id> <role_id>`").await;
+                    return;
+                }
+                match ctx.http.add_member_role(guild_id, parts[0], parts[1]).await {
+                    Ok(_) => { let _ = ctx.http.send_message(channel_id, "Role added").await; }
+                    Err(e) => { let _ = ctx.http.send_message(channel_id, &format!("Error: {}", e)).await; }
+                }
+            }
+
+            "removerole" => {
+                let guild_id = match &msg.guild_id {
+                    Some(id) => id.as_str(),
+                    None => return,
+                };
+                let parts: Vec<&str> = args.split_whitespace().collect();
+                if parts.len() != 2 {
+                    let _ = ctx.http.send_message(channel_id, "Usage: `!removerole <user_id> <role_id>`").await;
+                    return;
+                }
+                match ctx.http.remove_member_role(guild_id, parts[0], parts[1]).await {
+                    Ok(_) => { let _ = ctx.http.send_message(channel_id, "Role removed").await; }
+                    Err(e) => { let _ = ctx.http.send_message(channel_id, &format!("Error: {}", e)).await; }
+                }
+            }
+
             _ => {}
         }
     }
