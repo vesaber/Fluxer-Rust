@@ -25,3 +25,5 @@ jobs:
         run: cargo build --all-targets
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Audit
+        run: cargo install cargo-audit --locked && cargo audit
