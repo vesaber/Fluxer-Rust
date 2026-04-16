@@ -778,6 +778,36 @@ impl Http {
         );
         self.request_json(self.client.post(&url).json(payload)).await
     }
+
+    /// Gets a message previously sent by a webhook.
+    pub async fn get_webhook_message(
+        &self,
+        webhook_id: &str,
+        webhook_token: &str,
+        message_id: &str,
+    ) -> Result<Message, ClientError> {
+        let url = format!(
+            "{}/webhooks/{}/{}/messages/{}",
+            self.base_url, webhook_id, webhook_token, message_id
+        );
+        self.request_json(self.client.get(&url)).await
+    }
+
+    /// Edits a message previously sent by a webhook.
+    pub async fn edit_webhook_message(
+        &self,
+        webhook_id: &str,
+        webhook_token: &str,
+        message_id: &str,
+        payload: &WebhookEditPayload,
+    ) -> Result<Message, ClientError> {
+        let url = format!(
+            "{}/webhooks/{}/{}/messages/{}",
+            self.base_url, webhook_id, webhook_token, message_id
+        );
+        self.request_json(self.client.patch(&url).json(payload)).await
+    }
+
 }
 
 fn urlencoded(s: &str) -> String {

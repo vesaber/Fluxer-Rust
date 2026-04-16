@@ -1174,4 +1174,21 @@ pub struct WebhookExecutePayload {
     pub tts: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embeds: Option<Vec<Embed>>,
+    /// Reply to a message in the same channel. Only `message_id` is needed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_reference: Option<WebhookMessageReference>,
+}
+
+/// Message to reply to when executing a webhook.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct WebhookMessageReference {
+    pub message_id: Snowflake,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct WebhookEditPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embeds: Option<Vec<Embed>>,
 }
