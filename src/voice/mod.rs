@@ -1,16 +1,29 @@
-//! Voice support via LiveKit. Requires `ffmpeg` to be installed for audio playback.
+//! Voice support via LiveKit.
 
 use std::sync::Arc;
 use livekit::options::TrackPublishOptions;
-use livekit::track::{LocalAudioTrack, LocalTrack, TrackSource};
+use livekit::track::{LocalAudioTrack, LocalTrack, RemoteTrack, TrackSource};
 use livekit::webrtc::audio_source::native::NativeAudioSource;
+use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::*;
-use livekit::Room;
+use livekit::{Room, RoomEvent};
 use std::process::Stdio;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
 use crate::http::Http;
 use tokio::task::AbortHandle;
+use futures::StreamExt as _;
+use crate::client::Context;
+
+/// A single audio frame received from a remote voice participant.
+#[derive(Debug, Clone)]
+pub struct VoiceFrame {
+    pub participant_identity: String,
+    pub data: Vec<i16>,
+    pub sample_rate: u32,
+    pub num_channels: u32,
+    pub samples_per_channel: u32,
+}
 
 /// A voice connection backed by LiveKit. Get one from [`Context::join_voice`](crate::client::Context::join_voice).
 pub struct FluxerVoiceConnection {
@@ -25,10 +38,38 @@ impl FluxerVoiceConnection {
     pub async fn connect(
         url: &str,
         token: &str,
+        ctx: Context,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let (room, events) = Room::connect(url, token, Default::default()).await?;
+        let (room, mut events) = Room::connect(url, token, Default::default()).await?;
         let room = Arc::new(room);
-        tokio::spawn(async move { let mut e = events; while e.recv().await.is_some() {} });
+        tokio::spawn(async move {
+            while let Some(event) = events.recv().await {
+                if let RoomEvent::TrackSubscribed { track, participant, .. } = event {
+                    if let RemoteTrack::Audio(audio_track) = track {
+                        let ctx = ctx.clone();
+                        let identity = participant.identity().to_string();
+                        let rtc_track = audio_track.rtc_track();
+                        tokio::spawn(async move {
+                            let mut stream = NativeAudioStream::new(rtc_track, 48_000, 2);
+                            while let Some(frame) = stream.next().await {
+                                ctx.handler
+                                    .on_voice_receive(
+                                        ctx.clone(),
+                                        VoiceFrame {
+                                            participant_identity: identity.clone(),
+                                            data: frame.data.to_vec(),
+                                            sample_rate: frame.sample_rate,
+                                            num_channels: frame.num_channels,
+                                            samples_per_channel: frame.samples_per_channel,
+                                        },
+                                    )
+                                    .await;
+                            }
+                        });
+                    }
+                }
+            }
+        });
         let source = NativeAudioSource::new(Default::default(), 48_000, 2, 960);
 
         let track = LocalAudioTrack::create_audio_track(

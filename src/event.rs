@@ -163,4 +163,7 @@ pub trait EventHandler: Send + Sync {
     async fn on_saved_message_delete(&self, _ctx: Context, _event: SavedMessageDelete) {}
 
     async fn on_recent_mention_delete(&self, _ctx: Context, _event: RecentMentionDelete) {}
+
+    /// Raw PCM frames from a remote voice participant. Fires for every audio frame received.
+    async fn on_voice_receive(&self, _ctx: Context, _frame: crate::voice::VoiceFrame) {}
 }

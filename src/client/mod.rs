@@ -43,6 +43,7 @@ pub struct Context {
     /// Used internally by `join_voice` / `leave_voice`.
     pub voice_states: Arc<Mutex<HashMap<String, VoiceState>>>,
     pub(crate) live_rooms: Arc<Mutex<HashMap<String, std::sync::Arc<livekit::Room>>>>,
+    pub(crate) handler: Arc<dyn EventHandler>,
 }
 
 impl Context {
@@ -93,6 +94,7 @@ impl Context {
         let conn = crate::voice::FluxerVoiceConnection::connect(
             &voice_state.endpoint,
             &voice_state.token,
+            self.clone(),
         )
         .await
         .map_err(|e| ClientError::Voice(e.to_string()))?;
@@ -316,6 +318,7 @@ impl Client {
             gateway_tx: Arc::new(gateway_tx),
             voice_states: Arc::new(Mutex::new(HashMap::new())),
             live_rooms: Arc::new(Mutex::new(HashMap::new())),
+            handler: self.handler.clone(),
         };
 
         let token = self.http.get_token().to_string();

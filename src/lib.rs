@@ -49,6 +49,6 @@ pub mod prelude {
     pub use crate::error::ClientError;
     pub use crate::event::EventHandler;
     pub use crate::model::*;
-    pub use crate::voice::FluxerVoiceConnection;
+    pub use crate::voice::{FluxerVoiceConnection, VoiceFrame};
     pub use async_trait::async_trait;
 }
