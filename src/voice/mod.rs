@@ -44,29 +44,27 @@ impl FluxerVoiceConnection {
         let room = Arc::new(room);
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
-                if let RoomEvent::TrackSubscribed { track, participant, .. } = event {
-                    if let RemoteTrack::Audio(audio_track) = track {
-                        let ctx = ctx.clone();
-                        let identity = participant.identity().to_string();
-                        let rtc_track = audio_track.rtc_track();
-                        tokio::spawn(async move {
-                            let mut stream = NativeAudioStream::new(rtc_track, 48_000, 2);
-                            while let Some(frame) = stream.next().await {
-                                ctx.handler
-                                    .on_voice_receive(
-                                        ctx.clone(),
-                                        VoiceFrame {
-                                            participant_identity: identity.clone(),
-                                            data: frame.data.to_vec(),
-                                            sample_rate: frame.sample_rate,
-                                            num_channels: frame.num_channels,
-                                            samples_per_channel: frame.samples_per_channel,
-                                        },
-                                    )
-                                    .await;
-                            }
-                        });
-                    }
+                if let RoomEvent::TrackSubscribed { track: RemoteTrack::Audio(audio_track), participant, .. } = event {
+                    let ctx = ctx.clone();
+                    let identity = participant.identity().to_string();
+                    let rtc_track = audio_track.rtc_track();
+                    tokio::spawn(async move {
+                        let mut stream = NativeAudioStream::new(rtc_track, 48_000, 2);
+                        while let Some(frame) = stream.next().await {
+                            ctx.handler
+                                .on_voice_receive(
+                                    ctx.clone(),
+                                    VoiceFrame {
+                                        participant_identity: identity.clone(),
+                                        data: frame.data.to_vec(),
+                                        sample_rate: frame.sample_rate,
+                                        num_channels: frame.num_channels,
+                                        samples_per_channel: frame.samples_per_channel,
+                                    },
+                                )
+                                .await;
+                        }
+                    });
                 }
             }
         });

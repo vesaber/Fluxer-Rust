@@ -72,20 +72,20 @@ impl EventHandler for Handler {
                     .unwrap()
                     .as_nanos() % responses.len() as u128) as usize;
                 let answer = responses[idx];
-                let _ = ctx.http.edit_message(channel_id, &msg.id, &format!("{}", answer)).await;
+                let _ = ctx.http.edit_message(channel_id, &msg.id, answer).await;
             }
 
             "flip" => {
                 let result = if std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos() % 2 == 0 { "Heads" } else { "Tails" };
-                let _ = ctx.http.edit_message(channel_id, &msg.id, &format!("{}", result)).await;
+                    .as_nanos().is_multiple_of(2) { "Heads" } else { "Tails" };
+                let _ = ctx.http.edit_message(channel_id, &msg.id, result).await;
             }
 
             "roll" => {
                 let sides: u32 = args.parse().unwrap_or(6);
-                if sides < 2 || sides > 100 {
+                if !(2..=100).contains(&sides) {
                     let _ = ctx.http.edit_message(channel_id, &msg.id, "Use 2-100 sides").await;
                     return;
                 }
