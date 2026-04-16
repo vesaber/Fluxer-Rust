@@ -90,6 +90,5 @@ Apache-2.0
 
 ## Donations
 
-Paypal: [paypal.me/vesaber](https://paypal.me/vesaber)\
 Monero: `46yingAoPTfECB2fXLQPiq9uwPezBQYjPhn3B4yScozaLiaiM4NpmRqS4MJ4Ja5gewJs5pLzV2RMV9USvwDNhQvbF6LExTU`\
 Bitcoin: `bc1q5wudz9xqctkswrzphjc48kt5hurkz63e74jece`
