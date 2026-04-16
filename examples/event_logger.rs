@@ -384,8 +384,24 @@ impl EventHandler for Handler {
             e.channels.len());
     }
 
-    async fn on_unknown_event(&self, _ctx: Context, event_type: String, _data: serde_json::Value) {
-        println!("[unknown] {}", event_type);
+    async fn on_guild_audit_log_entry_create(&self, _ctx: Context, e: GuildAuditLogEntryCreate) {
+        println!("[guild_audit_log_entry_create] id={} guild={} action={:?} user={} target={} reason={:?}",
+            e.id,
+            e.guild_id,
+            e.action_type,
+            e.user_id.as_deref().unwrap_or("?"),
+            e.target_id.as_deref().unwrap_or("?"),
+            e.reason.as_deref().unwrap_or("none"));
+        if let Some(changes) = &e.changes {
+            println!("  changes: {}", serde_json::to_string(changes).unwrap_or_default());
+        }
+        if let Some(options) = &e.options {
+            println!("  options: {}", serde_json::to_string(options).unwrap_or_default());
+        }
+    }
+
+    async fn on_unknown_event(&self, _ctx: Context, event_type: String, data: serde_json::Value) {
+        println!("[unknown] {} | {}", event_type, serde_json::to_string_pretty(&data).unwrap_or_default());
     }
 }
 

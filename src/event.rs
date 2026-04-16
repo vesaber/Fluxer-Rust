@@ -138,6 +138,8 @@ pub trait EventHandler: Send + Sync {
 
     async fn on_guild_sync(&self, _ctx: Context, _event: GuildSync) {}
 
+    async fn on_guild_audit_log_entry_create(&self, _ctx: Context, _event: GuildAuditLogEntryCreate) {}
+
     async fn on_unknown_event(&self, _ctx: Context, _event_type: String, _data: serde_json::Value) {}
 
     async fn on_guild_members_chunk(&self, _ctx: Context, _event: GuildMembersChunk) {}

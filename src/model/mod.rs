@@ -1174,6 +1174,28 @@ pub struct SearchMessagesResponse {
     pub page: u32,
 }
 
+/// Audit log entry from the gateway.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildAuditLogEntryCreate {
+    pub id: Snowflake,
+    pub guild_id: Snowflake,
+    pub action_type: Option<u64>,
+    pub user_id: Option<Snowflake>,
+    pub target_id: Option<Snowflake>,
+    pub reason: Option<String>,
+    pub changes: Option<Vec<AuditLogChange>>,
+    /// Extra context depending on the action e.g. channel name/type for channel creates.
+    pub options: Option<serde_json::Value>,
+}
+
+/// A single changed field inside an audit log entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogChange {
+    pub key: String,
+    pub new_value: Option<serde_json::Value>,
+    pub old_value: Option<serde_json::Value>,
+}
+
 /// A single entry for [`Http::ack_bulk`]. Marks `message_id` as the last-read
 /// message in `channel_id`.
 #[derive(Debug, Clone, Serialize)]
