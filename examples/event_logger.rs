@@ -311,6 +311,23 @@ impl EventHandler for Handler {
             e.guild_id, e.chunk_index + 1, e.chunk_count, e.members.len());
     }
 
+    async fn on_voice_state_update(&self, _ctx: Context, e: VoiceStateUpdate) {
+        println!("[voice_state_update] user={} guild={} channel={} self_mute={:?} self_deaf={:?} stream={:?} video={:?} server_mute={:?} server_deaf={:?} mobile={:?} connection={} version={:?} stream_keys={:?}",
+            e.user_id,
+            e.guild_id.as_deref().unwrap_or("DM"),
+            e.channel_id.as_deref().unwrap_or("none"),
+            e.self_mute,
+            e.self_deaf,
+            e.self_stream,
+            e.self_video,
+            e.mute,
+            e.deaf,
+            e.is_mobile,
+            e.connection_id.as_deref().unwrap_or("?"),
+            e.version,
+            e.viewer_stream_keys);
+    }
+
     async fn on_voice_server_update(&self, _ctx: Context, e: VoiceServerUpdate) {
         println!("[voice_server_update] guild={} endpoint={}",
             e.guild_id.as_deref().unwrap_or("DM"),

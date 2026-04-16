@@ -868,6 +868,28 @@ pub struct GuildMembersChunk {
     pub nonce: Option<String>,
 }
 
+/// A user's voice state changed (joined/left/muted/deafened in a guild voice channel).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceStateUpdate {
+    pub user_id: Snowflake,
+    pub guild_id: Option<Snowflake>,
+    pub channel_id: Option<Snowflake>,
+    pub session_id: Option<String>,
+    pub connection_id: Option<String>,
+    pub self_mute: Option<bool>,
+    pub self_deaf: Option<bool>,
+    pub self_video: Option<bool>,
+    pub self_stream: Option<bool>,
+    /// Server-side mute (set by a moderator).
+    pub mute: Option<bool>,
+    /// Server-side deafen (set by a moderator).
+    pub deaf: Option<bool>,
+    pub is_mobile: Option<bool>,
+    pub member: Option<Member>,
+    pub viewer_stream_keys: Option<Vec<String>>,
+    pub version: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceServerUpdate {
     pub token: String,

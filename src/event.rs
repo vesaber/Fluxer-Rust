@@ -142,6 +142,8 @@ pub trait EventHandler: Send + Sync {
 
     async fn on_guild_members_chunk(&self, _ctx: Context, _event: GuildMembersChunk) {}
 
+    async fn on_voice_state_update(&self, _ctx: Context, _event: VoiceStateUpdate) {}
+
     async fn on_voice_server_update(&self, _ctx: Context, _event: VoiceServerUpdate) {}
 
     async fn on_resumed(&self, _ctx: Context, _event: Resumed) {}

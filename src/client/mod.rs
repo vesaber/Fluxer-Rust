@@ -618,7 +618,7 @@ async fn dispatch_event(
         RelationshipRemove, RelationshipUpdate, Resumed, SavedMessageCreate, SavedMessageDelete,
         SessionsReplace, TypingStart, UnavailableGuild, UserConnectionsUpdate, UserGuildSettingsUpdate,
         UserNoteUpdate, UserPinnedDmsUpdate, UserSettingsUpdate, UserUpdate, VoiceServerUpdate,
-        WebhooksUpdate,
+        VoiceStateUpdate, WebhooksUpdate,
     };
     use crate::model::voice::VoiceState;
 
@@ -681,6 +681,10 @@ async fn dispatch_event(
                     session_id: None,
                 });
                 entry.session_id = Some(sess);
+            }
+            match serde_json::from_value::<VoiceStateUpdate>(data.clone()) {
+                Ok(v) => handler.on_voice_state_update(ctx, v).await,
+                Err(e) => eprintln!("[fluxer-rs] Failed to deserialize VOICE_STATE_UPDATE: {}", e),
             }
         }
         "VOICE_SERVER_UPDATE" => {
