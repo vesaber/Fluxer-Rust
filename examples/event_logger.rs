@@ -387,7 +387,7 @@ impl EventHandler for Handler {
     async fn on_guild_audit_log_entry_create(&self, _ctx: Context, e: GuildAuditLogEntryCreate) {
         println!("[guild_audit_log_entry_create] id={} guild={} action={:?} user={} target={} reason={:?}",
             e.id,
-            e.guild_id,
+            e.guild_id.as_deref().unwrap_or("?"),
             e.action_type,
             e.user_id.as_deref().unwrap_or("?"),
             e.target_id.as_deref().unwrap_or("?"),
