@@ -17,17 +17,34 @@ fn parse_command(content: &str) -> Option<(&str, &str)> {
 impl EventHandler for Handler {
     async fn on_ready(&self, ctx: Context, ready: Ready) {
         println!("Logged in as {}", ready.user.username);
-        println!("current_user from cache: {:?}", ctx.cache.current_user().await);
+        println!(
+            "current_user from cache: {:?}",
+            ctx.cache.current_user().await
+        );
     }
 
     async fn on_guild_create(&self, ctx: Context, guild: Guild) {
-        println!("GUILD_CREATE: {} (cache size: {})", guild.id, ctx.cache.guild_count().await);
+        println!(
+            "GUILD_CREATE: {} (cache size: {})",
+            guild.id,
+            ctx.cache.guild_count().await
+        );
     }
 
     async fn on_message(&self, ctx: Context, msg: Message) {
         let user_cached = ctx.cache.user(&msg.author.id).await.is_some();
-        let ch_cached   = ctx.cache.channel(msg.channel_id.as_deref().unwrap_or("")).await.is_some();
-        let content_preview = msg.content.as_deref().unwrap_or("").chars().take(60).collect::<String>();
+        let ch_cached = ctx
+            .cache
+            .channel(msg.channel_id.as_deref().unwrap_or(""))
+            .await
+            .is_some();
+        let content_preview = msg
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(60)
+            .collect::<String>();
         let attachments = msg.attachments.as_ref().map(|a| a.len()).unwrap_or(0);
         let embeds = msg.embeds.as_ref().map(|e| e.len()).unwrap_or(0);
         println!(
@@ -66,11 +83,10 @@ impl EventHandler for Handler {
                 let elapsed = start.elapsed().as_millis();
 
                 if let Ok(sent) = sent {
-                    let _ = ctx.http.edit_message(
-                        channel_id,
-                        &sent.id,
-                        &format!("Pong! {}ms", elapsed),
-                    ).await;
+                    let _ = ctx
+                        .http
+                        .edit_message(channel_id, &sent.id, &format!("Pong! {}ms", elapsed))
+                        .await;
                 }
             }
 
@@ -87,7 +103,10 @@ impl EventHandler for Handler {
                 let (title, desc) = match args.split_once('|') {
                     Some((t, d)) => (t.trim(), d.trim()),
                     None => {
-                        let _ = ctx.http.send_message(channel_id, "`!embed title | description`").await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, "`!embed title | description`")
+                            .await;
                         return;
                     }
                 };
@@ -132,7 +151,10 @@ impl EventHandler for Handler {
                 if let Ok(guild) = ctx.http.get_guild(guild_id).await {
                     let name = guild.name.as_deref().unwrap_or("Unknown");
 
-                    let members = ctx.http.get_guild_members(guild_id, Some(1000), None).await
+                    let members = ctx
+                        .http
+                        .get_guild_members(guild_id, Some(1000), None)
+                        .await
                         .map(|m| m.len().to_string())
                         .unwrap_or("?".into());
 
@@ -148,7 +170,10 @@ impl EventHandler for Handler {
 
             "attach" => {
                 if args.is_empty() {
-                    let _ = ctx.http.send_message(channel_id, "Usage: `!attach <file path>`").await;
+                    let _ = ctx
+                        .http
+                        .send_message(channel_id, "Usage: `!attach <file path>`")
+                        .await;
                     return;
                 }
                 let path = std::path::Path::new(args);
@@ -184,7 +209,10 @@ impl EventHandler for Handler {
                     }
                     Err(e) => {
                         eprintln!("[attach] failed to read file: {}", e);
-                        let _ = ctx.http.send_message(channel_id, &format!("Failed to read file: {}", e)).await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Failed to read file: {}", e))
+                            .await;
                     }
                 }
             }
@@ -196,12 +224,22 @@ impl EventHandler for Handler {
                 };
                 let parts: Vec<&str> = args.split_whitespace().collect();
                 if parts.len() != 2 {
-                    let _ = ctx.http.send_message(channel_id, "Usage: `!addrole <user_id> <role_id>`").await;
+                    let _ = ctx
+                        .http
+                        .send_message(channel_id, "Usage: `!addrole <user_id> <role_id>`")
+                        .await;
                     return;
                 }
                 match ctx.http.add_member_role(guild_id, parts[0], parts[1]).await {
-                    Ok(_) => { let _ = ctx.http.send_message(channel_id, "Role added").await; }
-                    Err(e) => { let _ = ctx.http.send_message(channel_id, &format!("Error: {}", e)).await; }
+                    Ok(_) => {
+                        let _ = ctx.http.send_message(channel_id, "Role added").await;
+                    }
+                    Err(e) => {
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Error: {}", e))
+                            .await;
+                    }
                 }
             }
 
@@ -212,12 +250,26 @@ impl EventHandler for Handler {
                 };
                 let parts: Vec<&str> = args.split_whitespace().collect();
                 if parts.len() != 2 {
-                    let _ = ctx.http.send_message(channel_id, "Usage: `!removerole <user_id> <role_id>`").await;
+                    let _ = ctx
+                        .http
+                        .send_message(channel_id, "Usage: `!removerole <user_id> <role_id>`")
+                        .await;
                     return;
                 }
-                match ctx.http.remove_member_role(guild_id, parts[0], parts[1]).await {
-                    Ok(_) => { let _ = ctx.http.send_message(channel_id, "Role removed").await; }
-                    Err(e) => { let _ = ctx.http.send_message(channel_id, &format!("Error: {}", e)).await; }
+                match ctx
+                    .http
+                    .remove_member_role(guild_id, parts[0], parts[1])
+                    .await
+                {
+                    Ok(_) => {
+                        let _ = ctx.http.send_message(channel_id, "Role removed").await;
+                    }
+                    Err(e) => {
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Error: {}", e))
+                            .await;
+                    }
                 }
             }
 
@@ -228,8 +280,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = std::env::var("FLUXER_TOKEN")
-        .expect("Set FLUXER_TOKEN to your bot token");
+    let token = std::env::var("FLUXER_TOKEN").expect("Set FLUXER_TOKEN to your bot token");
 
     let mut client = Client::builder(&token)
         // .api_url("http://localhost:48763/api/v1") this is for self hosted instances

@@ -1,17 +1,17 @@
 //! Gateway client and connection management.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use futures::{SinkExt, StreamExt};
-use serde_json::Value;
-use tokio::sync::Mutex;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 use crate::cache::Cache;
 use crate::error::ClientError;
 use crate::event::EventHandler;
 use crate::http::Http;
 use crate::model::voice::VoiceState;
+use futures::{SinkExt, StreamExt};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 
 const DEFAULT_API_URL: &str = "https://api.fluxer.app/v1";
 const DEFAULT_GATEWAY_URL: &str = "wss://gateway.fluxer.app/?v=1&encoding=json";
@@ -99,7 +99,10 @@ impl Context {
         .await
         .map_err(|e| ClientError::Voice(e.to_string()))?;
 
-        self.live_rooms.lock().await.insert(guild_id.to_string(), conn.room.clone());
+        self.live_rooms
+            .lock()
+            .await
+            .insert(guild_id.to_string(), conn.room.clone());
 
         Ok(conn)
     }
@@ -257,7 +260,10 @@ impl Client {
                 }
 
                 Err(ClientError::ConnectionClosed) => {
-                    eprintln!("[fluxer-rs] Connection closed, reconnecting in {:?}...", backoff);
+                    eprintln!(
+                        "[fluxer-rs] Connection closed, reconnecting in {:?}...",
+                        backoff
+                    );
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(Duration::from_secs(60));
                     continue;
@@ -296,16 +302,13 @@ impl Client {
         let seq_shared: Arc<Mutex<Option<u64>>> = Arc::new(Mutex::new(*last_seq));
         let ack_shared: Arc<Mutex<bool>> = Arc::new(Mutex::new(true));
         let (gateway_tx, mut gateway_rx) = tokio::sync::mpsc::channel::<String>(64);
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::watch::channel(false);
         {
             let write_fwd = write.clone();
             tokio::spawn(async move {
                 while let Some(msg) = gateway_rx.recv().await {
                     let mut guard = write_fwd.lock().await;
-                    if guard
-                        .send(WsMessage::Text(msg.into()))
-                        .await
-                        .is_err()
-                    {
+                    if guard.send(WsMessage::Text(msg.into())).await.is_err() {
                         break;
                     }
                 }
@@ -354,7 +357,22 @@ impl Client {
 
         let handler = self.handler.clone();
 
-        while let Some(msg_result) = read.next().await {
+        loop {
+            let msg_result = tokio::select! {
+                changed = reconnect_rx.changed() => {
+                    match changed {
+                        Ok(_) if *reconnect_rx.borrow() => {
+                            return Ok(LoopControl::Reconnect { resume: true });
+                        }
+                        Ok(_) => continue,
+                        Err(_) => return Err(ClientError::ConnectionClosed),
+                    }
+                }
+                msg = read.next() => match msg {
+                    Some(msg) => msg,
+                    None => break,
+                },
+            };
             let text = match msg_result? {
                 WsMessage::Text(t) => t,
                 WsMessage::Close(frame) => {
@@ -403,15 +421,14 @@ impl Client {
                     let write_hb = write.clone();
                     let seq_hb = seq_shared.clone();
                     let ack_hb = ack_shared.clone();
+                    let reconnect_hb = reconnect_tx.clone();
 
                     tokio::spawn(async move {
-                        let jitter = Duration::from_millis(
-                            (rand::random::<u64>() % interval_ms).max(1),
-                        );
+                        let jitter =
+                            Duration::from_millis((rand::random::<u64>() % interval_ms).max(1));
                         tokio::time::sleep(jitter).await;
 
-                        let mut ticker =
-                            tokio::time::interval(Duration::from_millis(interval_ms));
+                        let mut ticker = tokio::time::interval(Duration::from_millis(interval_ms));
                         loop {
                             ticker.tick().await;
 
@@ -421,6 +438,7 @@ impl Client {
                                     eprintln!(
                                         "[fluxer-rs] No heartbeat ACK — zombie connection, dropping."
                                     );
+                                    let _ = reconnect_hb.send(true);
                                     break;
                                 }
                                 *ack = false;
@@ -455,10 +473,8 @@ impl Client {
                             *session_id = Some(sid.to_string());
                         }
                         if let Some(rurl) = data["resume_gateway_url"].as_str() {
-                            *resume_url = Some(format!(
-                                "{}/?v=1&encoding=json",
-                                rurl.trim_end_matches('/')
-                            ));
+                            *resume_url =
+                                Some(format!("{}/?v=1&encoding=json", rurl.trim_end_matches('/')));
                         }
                         // Subscribe to all guilds (op 14) so events are received.
                         // Without this, self-bots only receive DM and system events.
@@ -531,16 +547,20 @@ async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
                 if let Some(channels) = data["channels"].as_array() {
                     let mut ch_map = cache.channels.write().await;
                     for ch_val in channels {
-                        if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(ch_val.clone()) {
+                        if let Ok(ch) =
+                            serde_json::from_value::<crate::model::Channel>(ch_val.clone())
+                        {
                             ch_map.insert(ch.id.clone(), ch);
                         }
                     }
                 }
-                
+
                 if let Some(members) = data["members"].as_array() {
                     let mut user_map = cache.users.write().await;
                     for m_val in members {
-                        if let Ok(user) = serde_json::from_value::<crate::model::User>(m_val["user"].clone()) {
+                        if let Ok(user) =
+                            serde_json::from_value::<crate::model::User>(m_val["user"].clone())
+                        {
                             user_map.insert(user.id.clone(), user);
                         }
                     }
@@ -552,7 +572,8 @@ async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
             if let Some(channels) = data["channels"].as_array() {
                 let mut ch_map = cache.channels.write().await;
                 for ch_val in channels {
-                    if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(ch_val.clone()) {
+                    if let Ok(ch) = serde_json::from_value::<crate::model::Channel>(ch_val.clone())
+                    {
                         ch_map.insert(ch.id.clone(), ch);
                     }
                 }
@@ -560,7 +581,9 @@ async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
             if let Some(members) = data["members"].as_array() {
                 let mut user_map = cache.users.write().await;
                 for m_val in members {
-                    if let Ok(user) = serde_json::from_value::<crate::model::User>(m_val["user"].clone()) {
+                    if let Ok(user) =
+                        serde_json::from_value::<crate::model::User>(m_val["user"].clone())
+                    {
                         user_map.insert(user.id.clone(), user);
                     }
                 }
@@ -574,6 +597,8 @@ async fn cache_update(cache: &Cache, event_type: &str, data: &Value) {
         "GUILD_DELETE" => {
             if let Some(id) = data["id"].as_str() {
                 cache.guilds.write().await.remove(id);
+                let mut channels = cache.channels.write().await;
+                channels.retain(|_, channel| channel.guild_id.as_deref() != Some(id));
             }
         }
         "CHANNEL_CREATE" | "CHANNEL_UPDATE" => {
@@ -606,21 +631,22 @@ async fn dispatch_event(
     ctx: Context,
     handler: Arc<dyn EventHandler>,
 ) {
+    use crate::model::voice::VoiceState;
     use crate::model::{
         AuthSessionChange, CallCreate, CallDelete, CallUpdate, Channel, ChannelPinsAck,
         ChannelPinsUpdate, ChannelRecipientAdd, ChannelRecipientRemove, ChannelUpdateBulk, Guild,
         GuildAuditLogEntryCreate, GuildBanAdd, GuildBanRemove, GuildEmojisUpdate, GuildMemberAdd,
-        GuildMemberListUpdate, GuildMemberRemove, GuildMembersChunk, GuildMemberUpdate,
-        GuildRoleCreate, GuildRoleDelete, GuildRoleUpdate, GuildRoleUpdateBulk, GuildStickersUpdate,
-        GuildSync, InviteCreate, InviteDelete, Message, MessageAck, MessageDelete, MessageDeleteBulk,
-        MessageReactionAddMany, MessageUpdate, PassiveUpdates, PresenceUpdate, PresenceUpdateBulk,
-        ReactionAdd, ReactionRemove, ReactionRemoveAll, ReactionRemoveEmoji, Ready,
-        RecentMentionDelete, RelationshipAdd, RelationshipRemove, RelationshipUpdate, Resumed,
-        SavedMessageCreate, SavedMessageDelete, SessionsReplace, TypingStart, UnavailableGuild,
-        UserConnectionsUpdate, UserGuildSettingsUpdate, UserNoteUpdate, UserPinnedDmsUpdate,
-        UserSettingsUpdate, UserUpdate, VoiceServerUpdate, VoiceStateUpdate, WebhooksUpdate,
+        GuildMemberListUpdate, GuildMemberRemove, GuildMemberUpdate, GuildMembersChunk,
+        GuildRoleCreate, GuildRoleDelete, GuildRoleUpdate, GuildRoleUpdateBulk,
+        GuildStickersUpdate, GuildSync, InviteCreate, InviteDelete, Message, MessageAck,
+        MessageDelete, MessageDeleteBulk, MessageReactionAddMany, MessageUpdate, PassiveUpdates,
+        PresenceUpdate, PresenceUpdateBulk, ReactionAdd, ReactionRemove, ReactionRemoveAll,
+        ReactionRemoveEmoji, Ready, RecentMentionDelete, RelationshipAdd, RelationshipRemove,
+        RelationshipUpdate, Resumed, SavedMessageCreate, SavedMessageDelete, SessionsReplace,
+        TypingStart, UnavailableGuild, UserConnectionsUpdate, UserGuildSettingsUpdate,
+        UserNoteUpdate, UserPinnedDmsUpdate, UserSettingsUpdate, UserUpdate, VoiceServerUpdate,
+        VoiceStateUpdate, WebhooksUpdate,
     };
-    use crate::model::voice::VoiceState;
 
     macro_rules! dispatch {
         ($method:ident, $ty:ty) => {{
@@ -636,37 +662,39 @@ async fn dispatch_event(
     }
 
     match event_type.as_str() {
-        "READY"   => dispatch!(on_ready, Ready),
+        "READY" => dispatch!(on_ready, Ready),
         "RESUMED" => dispatch!(on_resumed, Resumed),
-        "MESSAGE_CREATE"      => dispatch!(on_message, Message),
-        "MESSAGE_UPDATE"      => dispatch!(on_message_update, MessageUpdate),
-        "MESSAGE_DELETE"      => dispatch!(on_message_delete, MessageDelete),
+        "MESSAGE_CREATE" => dispatch!(on_message, Message),
+        "MESSAGE_UPDATE" => dispatch!(on_message_update, MessageUpdate),
+        "MESSAGE_DELETE" => dispatch!(on_message_delete, MessageDelete),
         "MESSAGE_DELETE_BULK" => dispatch!(on_message_delete_bulk, MessageDeleteBulk),
-        "MESSAGE_REACTION_ADD"          => dispatch!(on_reaction_add, ReactionAdd),
-        "MESSAGE_REACTION_REMOVE"       => dispatch!(on_reaction_remove, ReactionRemove),
-        "MESSAGE_REACTION_REMOVE_ALL"   => dispatch!(on_reaction_remove_all, ReactionRemoveAll),
+        "MESSAGE_REACTION_ADD" => dispatch!(on_reaction_add, ReactionAdd),
+        "MESSAGE_REACTION_REMOVE" => dispatch!(on_reaction_remove, ReactionRemove),
+        "MESSAGE_REACTION_REMOVE_ALL" => dispatch!(on_reaction_remove_all, ReactionRemoveAll),
         "MESSAGE_REACTION_REMOVE_EMOJI" => dispatch!(on_reaction_remove_emoji, ReactionRemoveEmoji),
         "TYPING_START" => dispatch!(on_typing_start, TypingStart),
-        "CHANNEL_CREATE"      => dispatch!(on_channel_create, Channel),
-        "CHANNEL_UPDATE"      => dispatch!(on_channel_update, Channel),
-        "CHANNEL_DELETE"      => dispatch!(on_channel_delete, Channel),
+        "CHANNEL_CREATE" => dispatch!(on_channel_create, Channel),
+        "CHANNEL_UPDATE" => dispatch!(on_channel_update, Channel),
+        "CHANNEL_DELETE" => dispatch!(on_channel_delete, Channel),
         "CHANNEL_PINS_UPDATE" => dispatch!(on_channel_pins_update, ChannelPinsUpdate),
-        "CHANNEL_PINS_ACK"    => dispatch!(on_channel_pins_ack, ChannelPinsAck),
+        "CHANNEL_PINS_ACK" => dispatch!(on_channel_pins_ack, ChannelPinsAck),
         "GUILD_CREATE" => dispatch!(on_guild_create, Guild),
         "GUILD_UPDATE" => dispatch!(on_guild_update, Guild),
         "GUILD_DELETE" => dispatch!(on_guild_delete, UnavailableGuild),
-        "GUILD_MEMBER_ADD"    => dispatch!(on_guild_member_add, GuildMemberAdd),
+        "GUILD_MEMBER_ADD" => dispatch!(on_guild_member_add, GuildMemberAdd),
         "GUILD_MEMBER_UPDATE" => dispatch!(on_guild_member_update, GuildMemberUpdate),
         "GUILD_MEMBER_REMOVE" => dispatch!(on_guild_member_remove, GuildMemberRemove),
-        "GUILD_BAN_ADD"    => dispatch!(on_guild_ban_add, GuildBanAdd),
+        "GUILD_BAN_ADD" => dispatch!(on_guild_ban_add, GuildBanAdd),
         "GUILD_BAN_REMOVE" => dispatch!(on_guild_ban_remove, GuildBanRemove),
-        "GUILD_ROLE_CREATE"      => dispatch!(on_guild_role_create, GuildRoleCreate),
-        "GUILD_ROLE_UPDATE"      => dispatch!(on_guild_role_update, GuildRoleUpdate),
+        "GUILD_ROLE_CREATE" => dispatch!(on_guild_role_create, GuildRoleCreate),
+        "GUILD_ROLE_UPDATE" => dispatch!(on_guild_role_update, GuildRoleUpdate),
         "GUILD_ROLE_UPDATE_BULK" => dispatch!(on_guild_role_update_bulk, GuildRoleUpdateBulk),
-        "GUILD_ROLE_DELETE"      => dispatch!(on_guild_role_delete, GuildRoleDelete),
-        "GUILD_EMOJIS_UPDATE"   => dispatch!(on_guild_emojis_update, GuildEmojisUpdate),
+        "GUILD_ROLE_DELETE" => dispatch!(on_guild_role_delete, GuildRoleDelete),
+        "GUILD_EMOJIS_UPDATE" => dispatch!(on_guild_emojis_update, GuildEmojisUpdate),
         "GUILD_STICKERS_UPDATE" => dispatch!(on_guild_stickers_update, GuildStickersUpdate),
-        "GUILD_AUDIT_LOG_ENTRY_CREATE" => dispatch!(on_guild_audit_log_entry_create, GuildAuditLogEntryCreate),
+        "GUILD_AUDIT_LOG_ENTRY_CREATE" => {
+            dispatch!(on_guild_audit_log_entry_create, GuildAuditLogEntryCreate)
+        }
         "CHANNEL_UPDATE_BULK" => dispatch!(on_channel_update_bulk, ChannelUpdateBulk),
         "INVITE_CREATE" => dispatch!(on_invite_create, InviteCreate),
         "INVITE_DELETE" => dispatch!(on_invite_delete, InviteDelete),
@@ -685,7 +713,10 @@ async fn dispatch_event(
             }
             match serde_json::from_value::<VoiceStateUpdate>(data.clone()) {
                 Ok(v) => handler.on_voice_state_update(ctx, v).await,
-                Err(e) => eprintln!("[fluxer-rs] Failed to deserialize VOICE_STATE_UPDATE: {}", e),
+                Err(e) => eprintln!(
+                    "[fluxer-rs] Failed to deserialize VOICE_STATE_UPDATE: {}",
+                    e
+                ),
             }
         }
         "VOICE_SERVER_UPDATE" => {
@@ -700,52 +731,60 @@ async fn dispatch_event(
                     session_id: None,
                 });
                 entry.token = token.clone();
-                entry.endpoint = if endpoint.starts_with("wss://")
-                    || endpoint.starts_with("https://")
-                {
-                    endpoint.clone()
-                } else {
-                    format!("wss://{}", endpoint)
-                };
+                entry.endpoint =
+                    if endpoint.starts_with("wss://") || endpoint.starts_with("https://") {
+                        endpoint.clone()
+                    } else {
+                        format!("wss://{}", endpoint)
+                    };
             }
             match serde_json::from_value::<VoiceServerUpdate>(data.clone()) {
                 Ok(v) => handler.on_voice_server_update(ctx, v).await,
-                Err(e) => eprintln!("[fluxer-rs] Failed to deserialize VOICE_SERVER_UPDATE: {}", e),
+                Err(e) => eprintln!(
+                    "[fluxer-rs] Failed to deserialize VOICE_SERVER_UPDATE: {}",
+                    e
+                ),
             }
         }
 
-        "PRESENCE_UPDATE"       => dispatch!(on_presence_update, PresenceUpdate),
-        "PRESENCE_UPDATE_BULK"  => dispatch!(on_presence_update_bulk, PresenceUpdateBulk),
-        "USER_SETTINGS_UPDATE"  => dispatch!(on_user_settings_update, UserSettingsUpdate),
-        "USER_UPDATE"           => dispatch!(on_user_update, UserUpdate),
-        "USER_GUILD_SETTINGS_UPDATE" => dispatch!(on_user_guild_settings_update, UserGuildSettingsUpdate),
-        "USER_PINNED_DMS_UPDATE"     => dispatch!(on_user_pinned_dms_update, UserPinnedDmsUpdate),
-        "USER_NOTE_UPDATE"           => dispatch!(on_user_note_update, UserNoteUpdate),
-        "USER_CONNECTIONS_UPDATE"    => dispatch!(on_user_connections_update, UserConnectionsUpdate),
-        "AUTH_SESSION_CHANGE"        => dispatch!(on_auth_session_change, AuthSessionChange),
-        "MESSAGE_ACK"           => dispatch!(on_message_ack, MessageAck),
+        "PRESENCE_UPDATE" => dispatch!(on_presence_update, PresenceUpdate),
+        "PRESENCE_UPDATE_BULK" => dispatch!(on_presence_update_bulk, PresenceUpdateBulk),
+        "USER_SETTINGS_UPDATE" => dispatch!(on_user_settings_update, UserSettingsUpdate),
+        "USER_UPDATE" => dispatch!(on_user_update, UserUpdate),
+        "USER_GUILD_SETTINGS_UPDATE" => {
+            dispatch!(on_user_guild_settings_update, UserGuildSettingsUpdate)
+        }
+        "USER_PINNED_DMS_UPDATE" => dispatch!(on_user_pinned_dms_update, UserPinnedDmsUpdate),
+        "USER_NOTE_UPDATE" => dispatch!(on_user_note_update, UserNoteUpdate),
+        "USER_CONNECTIONS_UPDATE" => dispatch!(on_user_connections_update, UserConnectionsUpdate),
+        "AUTH_SESSION_CHANGE" => dispatch!(on_auth_session_change, AuthSessionChange),
+        "MESSAGE_ACK" => dispatch!(on_message_ack, MessageAck),
         "SESSIONS_REPLACE" => {
             match serde_json::from_value::<Vec<crate::model::SessionEntry>>(data.clone()) {
                 Ok(v) => handler.on_sessions_replace(ctx, SessionsReplace(v)).await,
                 Err(e) => eprintln!("[fluxer-rs] Failed to deserialize SESSIONS_REPLACE: {}", e),
             }
         }
-        "RELATIONSHIP_ADD"    => dispatch!(on_relationship_add, RelationshipAdd),
+        "RELATIONSHIP_ADD" => dispatch!(on_relationship_add, RelationshipAdd),
         "RELATIONSHIP_UPDATE" => dispatch!(on_relationship_update, RelationshipUpdate),
         "RELATIONSHIP_REMOVE" => dispatch!(on_relationship_remove, RelationshipRemove),
         "CALL_CREATE" => dispatch!(on_call_create, CallCreate),
         "CALL_UPDATE" => dispatch!(on_call_update, CallUpdate),
         "CALL_DELETE" => dispatch!(on_call_delete, CallDelete),
-        "CHANNEL_RECIPIENT_ADD"    => dispatch!(on_channel_recipient_add, ChannelRecipientAdd),
-        "CHANNEL_RECIPIENT_REMOVE" => dispatch!(on_channel_recipient_remove, ChannelRecipientRemove),
-        "MESSAGE_REACTION_ADD_MANY" => dispatch!(on_message_reaction_add_many, MessageReactionAddMany),
-        "RECENT_MENTION_DELETE"     => dispatch!(on_recent_mention_delete, RecentMentionDelete),
-        "SAVED_MESSAGE_CREATE"      => dispatch!(on_saved_message_create, SavedMessageCreate),
-        "SAVED_MESSAGE_DELETE"      => dispatch!(on_saved_message_delete, SavedMessageDelete),
-        "PASSIVE_UPDATES"           => dispatch!(on_passive_updates, PassiveUpdates),
-        "GUILD_MEMBER_LIST_UPDATE"  => dispatch!(on_guild_member_list_update, GuildMemberListUpdate),
-        "GUILD_MEMBERS_CHUNK"       => dispatch!(on_guild_members_chunk, GuildMembersChunk),
-        "GUILD_SYNC"                => dispatch!(on_guild_sync, GuildSync),
+        "CHANNEL_RECIPIENT_ADD" => dispatch!(on_channel_recipient_add, ChannelRecipientAdd),
+        "CHANNEL_RECIPIENT_REMOVE" => {
+            dispatch!(on_channel_recipient_remove, ChannelRecipientRemove)
+        }
+        "MESSAGE_REACTION_ADD_MANY" => {
+            dispatch!(on_message_reaction_add_many, MessageReactionAddMany)
+        }
+        "RECENT_MENTION_DELETE" => dispatch!(on_recent_mention_delete, RecentMentionDelete),
+        "SAVED_MESSAGE_CREATE" => dispatch!(on_saved_message_create, SavedMessageCreate),
+        "SAVED_MESSAGE_DELETE" => dispatch!(on_saved_message_delete, SavedMessageDelete),
+        "PASSIVE_UPDATES" => dispatch!(on_passive_updates, PassiveUpdates),
+        "GUILD_MEMBER_LIST_UPDATE" => dispatch!(on_guild_member_list_update, GuildMemberListUpdate),
+        "GUILD_MEMBERS_CHUNK" => dispatch!(on_guild_members_chunk, GuildMembersChunk),
+        "GUILD_SYNC" => dispatch!(on_guild_sync, GuildSync),
 
         "INTERACTION_CREATE"
         | "STAGE_INSTANCE_CREATE"

@@ -36,8 +36,8 @@
 
 pub mod cache;
 pub mod client;
-pub mod event;
 pub mod error;
+pub mod event;
 pub mod http;
 pub mod model;
 pub mod voice;

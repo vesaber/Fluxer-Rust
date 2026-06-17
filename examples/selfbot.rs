@@ -14,7 +14,9 @@ fn parse_command(content: &str) -> Option<(&str, &str)> {
 }
 
 async fn is_me(ctx: &Context, msg: &Message) -> bool {
-    ctx.cache.current_user().await
+    ctx.cache
+        .current_user()
+        .await
         .map(|u| u.id == msg.author.id)
         .unwrap_or(false)
 }
@@ -48,29 +50,44 @@ impl EventHandler for Handler {
                 let sent = ctx.http.send_message(channel_id, "Pong!").await;
                 let elapsed = start.elapsed().as_millis();
                 if let Ok(sent) = sent {
-                    let _ = ctx.http.edit_message(
-                        channel_id,
-                        &sent.id,
-                        &format!("Pong! `{}ms`", elapsed),
-                    ).await;
+                    let _ = ctx
+                        .http
+                        .edit_message(channel_id, &sent.id, &format!("Pong! `{}ms`", elapsed))
+                        .await;
                 }
             }
 
             "8ball" => {
                 if args.is_empty() {
-                    let _ = ctx.http.edit_message(channel_id, &msg.id, "Ask a question!").await;
+                    let _ = ctx
+                        .http
+                        .edit_message(channel_id, &msg.id, "Ask a question!")
+                        .await;
                     return;
                 }
                 let responses = [
-                    "Yes", "No", "Maybe", "Definitely", "Absolutely not",
-                    "Ask again later", "Better not tell you now", "Cannot predict now",
-                    "Don't count on it", "It is certain", "Most likely", "Outlook good",
-                    "Reply hazy, try again", "Signs point to yes", "Very doubtful", "Without a doubt",
+                    "Yes",
+                    "No",
+                    "Maybe",
+                    "Definitely",
+                    "Absolutely not",
+                    "Ask again later",
+                    "Better not tell you now",
+                    "Cannot predict now",
+                    "Don't count on it",
+                    "It is certain",
+                    "Most likely",
+                    "Outlook good",
+                    "Reply hazy, try again",
+                    "Signs point to yes",
+                    "Very doubtful",
+                    "Without a doubt",
                 ];
                 let idx = (std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos() % responses.len() as u128) as usize;
+                    .as_nanos()
+                    % responses.len() as u128) as usize;
                 let answer = responses[idx];
                 let _ = ctx.http.edit_message(channel_id, &msg.id, answer).await;
             }
@@ -79,21 +96,35 @@ impl EventHandler for Handler {
                 let result = if std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos().is_multiple_of(2) { "Heads" } else { "Tails" };
+                    .as_nanos()
+                    .is_multiple_of(2)
+                {
+                    "Heads"
+                } else {
+                    "Tails"
+                };
                 let _ = ctx.http.edit_message(channel_id, &msg.id, result).await;
             }
 
             "roll" => {
                 let sides: u32 = args.parse().unwrap_or(6);
                 if !(2..=100).contains(&sides) {
-                    let _ = ctx.http.edit_message(channel_id, &msg.id, "Use 2-100 sides").await;
+                    let _ = ctx
+                        .http
+                        .edit_message(channel_id, &msg.id, "Use 2-100 sides")
+                        .await;
                     return;
                 }
                 let result = (std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos() % sides as u128) as u32 + 1;
-                let _ = ctx.http.edit_message(channel_id, &msg.id, &format!("Rolled {}/{}", result, sides)).await;
+                    .as_nanos()
+                    % sides as u128) as u32
+                    + 1;
+                let _ = ctx
+                    .http
+                    .edit_message(channel_id, &msg.id, &format!("Rolled {}/{}", result, sides))
+                    .await;
             }
 
             "purge" => {
@@ -106,8 +137,14 @@ impl EventHandler for Handler {
                 };
                 match ctx.http.get_messages(channel_id, query).await {
                     Ok(messages) => {
-                        let my_id = ctx.cache.current_user().await.map(|u| u.id).unwrap_or_default();
-                        let my_messages: Vec<_> = messages.iter()
+                        let my_id = ctx
+                            .cache
+                            .current_user()
+                            .await
+                            .map(|u| u.id)
+                            .unwrap_or_default();
+                        let my_messages: Vec<_> = messages
+                            .iter()
                             .filter(|m| m.author.id == my_id)
                             .map(|m| m.id.as_str())
                             .collect();
@@ -122,7 +159,10 @@ impl EventHandler for Handler {
 
             "embed" => {
                 if args.is_empty() {
-                    let _ = ctx.http.edit_message(channel_id, &msg.id, "Usage: sb!embed <text>").await;
+                    let _ = ctx
+                        .http
+                        .edit_message(channel_id, &msg.id, "Usage: sb!embed <text>")
+                        .await;
                     return;
                 }
                 let embed = EmbedBuilder::new()
@@ -135,7 +175,9 @@ impl EventHandler for Handler {
             }
 
             "edit" => {
-                if args.is_empty() { return; }
+                if args.is_empty() {
+                    return;
+                }
                 let _ = ctx.http.edit_message(channel_id, &msg.id, args).await;
             }
 
@@ -159,8 +201,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = std::env::var("FLUXER_TOKEN")
-        .expect("Set FLUXER_TOKEN to your user token");
+    let token = std::env::var("FLUXER_TOKEN").expect("Set FLUXER_TOKEN to your user token");
 
     let mut client = Client::builder(&token)
         .user_token()

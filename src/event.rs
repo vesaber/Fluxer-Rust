@@ -8,9 +8,9 @@
 //! Because of this, the trait requires `Send + Sync`. If you need shared mutable
 //! state in your handler, wrap it in `Arc<Mutex<T>>`.
 
-use async_trait::async_trait;
 use crate::client::Context;
 use crate::model::*;
+use async_trait::async_trait;
 
 /// Trait for handling gateway events. Implement the methods you need, ignore the rest.
 ///
@@ -138,9 +138,15 @@ pub trait EventHandler: Send + Sync {
 
     async fn on_guild_sync(&self, _ctx: Context, _event: GuildSync) {}
 
-    async fn on_guild_audit_log_entry_create(&self, _ctx: Context, _event: GuildAuditLogEntryCreate) {}
+    async fn on_guild_audit_log_entry_create(
+        &self,
+        _ctx: Context,
+        _event: GuildAuditLogEntryCreate,
+    ) {
+    }
 
-    async fn on_unknown_event(&self, _ctx: Context, _event_type: String, _data: serde_json::Value) {}
+    async fn on_unknown_event(&self, _ctx: Context, _event_type: String, _data: serde_json::Value) {
+    }
 
     async fn on_guild_members_chunk(&self, _ctx: Context, _event: GuildMembersChunk) {}
 

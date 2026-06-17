@@ -3,12 +3,12 @@
 //! Handles auth headers, serialization, and error handling. You'll usually
 //! access this through `ctx.http` in your event handlers.
 
+use crate::error::ClientError;
+use crate::model::*;
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, USER_AGENT},
     StatusCode,
 };
-use crate::error::ClientError;
-use crate::model::*;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
@@ -151,7 +151,8 @@ impl Http {
         payload: &ChannelCreatePayload,
     ) -> Result<Channel, ClientError> {
         let url = format!("{}/channels/{}", self.base_url, channel_id);
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Permanently deletes a channel. Can't be undone.
@@ -226,7 +227,8 @@ impl Http {
         payload: &MessageCreatePayload,
     ) -> Result<Message, ClientError> {
         let url = format!("{}/channels/{}/messages", self.base_url, channel_id);
-        self.request_json(self.client.post(&url).json(payload)).await
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Shorthand for sending embeds. Wraps [`send_message_advanced`](Http::send_message_advanced).
@@ -291,7 +293,8 @@ impl Http {
             "{}/channels/{}/messages/{}",
             self.base_url, channel_id, message_id
         );
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Deletes a message. Bot must be the author, or have Manage Messages.
@@ -453,7 +456,8 @@ impl Http {
         payload: &CreateInvitePayload,
     ) -> Result<Invite, ClientError> {
         let url = format!("{}/channels/{}/invites", self.base_url, channel_id);
-        self.request_json(self.client.post(&url).json(payload)).await
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Deletes an invite by code.
@@ -493,7 +497,8 @@ impl Http {
         payload: &EditGuildPayload,
     ) -> Result<Guild, ClientError> {
         let url = format!("{}/guilds/{}", self.base_url, guild_id);
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Permanently deletes a guild. The bot must be the owner. (not tested)
@@ -522,7 +527,8 @@ impl Http {
         payload: &ChannelCreatePayload,
     ) -> Result<Channel, ClientError> {
         let url = format!("{}/guilds/{}/channels", self.base_url, guild_id);
-        self.request_json(self.client.post(&url).json(payload)).await
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Fetches a single guild member.
@@ -567,7 +573,8 @@ impl Http {
         payload: &EditMemberPayload,
     ) -> Result<Member, ClientError> {
         let url = format!("{}/guilds/{}/members/{}", self.base_url, guild_id, user_id);
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Grants a role to a guild member. Requires Manage Roles.
@@ -638,7 +645,8 @@ impl Http {
         payload: &CreateRolePayload,
     ) -> Result<Role, ClientError> {
         let url = format!("{}/guilds/{}/roles", self.base_url, guild_id);
-        self.request_json(self.client.post(&url).json(payload)).await
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Edits a role's properties.
@@ -649,7 +657,8 @@ impl Http {
         payload: &EditRolePayload,
     ) -> Result<Role, ClientError> {
         let url = format!("{}/guilds/{}/roles/{}", self.base_url, guild_id, role_id);
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Deletes a role.
@@ -731,7 +740,8 @@ impl Http {
             content: content.map(|s| s.to_string()),
             ..Default::default()
         };
-        self.send_message_with_files(channel_id, &payload, files).await
+        self.send_message_with_files(channel_id, &payload, files)
+            .await
     }
 
     /// Like [`send_message_advanced`](Http::send_message_advanced) but also uploads files as attachments.
@@ -833,7 +843,8 @@ impl Http {
         payload: &GuildVanityUrlUpdatePayload,
     ) -> Result<GuildVanityUrlUpdateResponse, ClientError> {
         let url = format!("{}/guilds/{}/vanity-url", self.base_url, guild_id);
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 
     /// Executes a webhook (sends a message through it). Uses `wait=true` so
@@ -848,7 +859,8 @@ impl Http {
             "{}/webhooks/{}/{}?wait=true",
             self.base_url, webhook_id, webhook_token
         );
-        self.request_json(self.client.post(&url).json(payload)).await
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Gets a message previously sent by a webhook.
@@ -877,7 +889,8 @@ impl Http {
             "{}/webhooks/{}/{}/messages/{}",
             self.base_url, webhook_id, webhook_token, message_id
         );
-        self.request_json(self.client.patch(&url).json(payload)).await
+        self.request_json(self.client.patch(&url).json(payload))
+            .await
     }
 }
 

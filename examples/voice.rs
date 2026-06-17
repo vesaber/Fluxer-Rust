@@ -48,7 +48,10 @@ impl EventHandler for Handler {
         match cmd {
             "join" => {
                 if args.is_empty() {
-                    let _ = ctx.http.send_message(channel_id, "`!join <voice_channel_id>`").await;
+                    let _ = ctx
+                        .http
+                        .send_message(channel_id, "`!join <voice_channel_id>`")
+                        .await;
                     return;
                 }
 
@@ -58,7 +61,10 @@ impl EventHandler for Handler {
                         let _ = ctx.http.send_message(channel_id, "Joined.").await;
                     }
                     Err(e) => {
-                        let _ = ctx.http.send_message(channel_id, &format!("Failed: {}", e)).await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Failed: {}", e))
+                            .await;
                     }
                 }
             }
@@ -77,7 +83,10 @@ impl EventHandler for Handler {
                 let conn = match conn.as_ref() {
                     Some(c) => c,
                     None => {
-                        let _ = ctx.http.send_message(channel_id, "Not in a voice channel.").await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, "Not in a voice channel.")
+                            .await;
                         return;
                     }
                 };
@@ -86,13 +95,22 @@ impl EventHandler for Handler {
                     handle.abort();
                 }
 
-                match conn.play_music(AUDIO_FILE, ctx.http.clone(), channel_id.to_string()).await {
+                match conn
+                    .play_music(AUDIO_FILE, ctx.http.clone(), channel_id.to_string())
+                    .await
+                {
                     Ok(handle) => {
                         *self.playback.lock().await = Some(handle);
-                        let _ = ctx.http.send_message(channel_id, &format!("Playing `{}`.", AUDIO_FILE)).await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Playing `{}`.", AUDIO_FILE))
+                            .await;
                     }
                     Err(e) => {
-                        let _ = ctx.http.send_message(channel_id, &format!("Failed: {}", e)).await;
+                        let _ = ctx
+                            .http
+                            .send_message(channel_id, &format!("Failed: {}", e))
+                            .await;
                     }
                 }
             }
@@ -102,7 +120,10 @@ impl EventHandler for Handler {
                     handle.abort();
                     let _ = ctx.http.send_message(channel_id, "Stopped.").await;
                 } else {
-                    let _ = ctx.http.send_message(channel_id, "Nothing is playing.").await;
+                    let _ = ctx
+                        .http
+                        .send_message(channel_id, "Nothing is playing.")
+                        .await;
                 }
             }
 
@@ -113,8 +134,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = std::env::var("FLUXER_TOKEN")
-        .expect("Set FLUXER_TOKEN to your bot token");
+    let token = std::env::var("FLUXER_TOKEN").expect("Set FLUXER_TOKEN to your bot token");
 
     let handler = Handler {
         playback: Mutex::new(None),

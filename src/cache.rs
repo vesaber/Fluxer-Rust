@@ -11,25 +11,25 @@
 //! # }
 //! ```
 
+use crate::model::{Channel, Guild, Snowflake, User};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::model::{Channel, Guild, Snowflake, User};
 
 /// In-memory gateway cache.
 pub struct Cache {
-    pub guilds:       RwLock<HashMap<Snowflake, Guild>>,
-    pub channels:     RwLock<HashMap<Snowflake, Channel>>,
-    pub users:        RwLock<HashMap<Snowflake, User>>,
+    pub guilds: RwLock<HashMap<Snowflake, Guild>>,
+    pub channels: RwLock<HashMap<Snowflake, Channel>>,
+    pub users: RwLock<HashMap<Snowflake, User>>,
     pub current_user: RwLock<Option<User>>,
 }
 
 impl Cache {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            guilds:       RwLock::new(HashMap::new()),
-            channels:     RwLock::new(HashMap::new()),
-            users:        RwLock::new(HashMap::new()),
+            guilds: RwLock::new(HashMap::new()),
+            channels: RwLock::new(HashMap::new()),
+            users: RwLock::new(HashMap::new()),
             current_user: RwLock::new(None),
         })
     }

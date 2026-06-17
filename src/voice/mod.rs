@@ -1,6 +1,8 @@
 //! Voice support via LiveKit.
 
-use std::sync::Arc;
+use crate::client::Context;
+use crate::http::Http;
+use futures::StreamExt as _;
 use livekit::options::TrackPublishOptions;
 use livekit::track::{LocalAudioTrack, LocalTrack, RemoteTrack, TrackSource};
 use livekit::webrtc::audio_source::native::NativeAudioSource;
@@ -8,12 +10,10 @@ use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::*;
 use livekit::{Room, RoomEvent};
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
-use crate::http::Http;
 use tokio::task::AbortHandle;
-use futures::StreamExt as _;
-use crate::client::Context;
 
 /// A single audio frame received from a remote voice participant.
 #[derive(Debug, Clone)]
@@ -44,7 +44,12 @@ impl FluxerVoiceConnection {
         let room = Arc::new(room);
         tokio::spawn(async move {
             while let Some(event) = events.recv().await {
-                if let RoomEvent::TrackSubscribed { track: RemoteTrack::Audio(audio_track), participant, .. } = event {
+                if let RoomEvent::TrackSubscribed {
+                    track: RemoteTrack::Audio(audio_track),
+                    participant,
+                    ..
+                } = event
+                {
                     let ctx = ctx.clone();
                     let identity = participant.identity().to_string();
                     let rtc_track = audio_track.rtc_track();
@@ -85,7 +90,10 @@ impl FluxerVoiceConnection {
             )
             .await?;
 
-        Ok(Self { room, audio_source: source })
+        Ok(Self {
+            room,
+            audio_source: source,
+        })
     }
 
     /// Plays audio from a file (anything ffmpeg can decode). Spawns ffmpeg
@@ -100,7 +108,9 @@ impl FluxerVoiceConnection {
         channel_id: String,
     ) -> Result<AbortHandle, Box<dyn std::error::Error + Send + Sync>> {
         let mut child = Command::new("ffmpeg")
-            .args(["-re", "-i", path, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"])
+            .args([
+                "-re", "-i", path, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1",
+            ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -112,6 +122,11 @@ impl FluxerVoiceConnection {
         let handle = tokio::spawn(async move {
             let mut buffer = vec![0u8; 960 * 2 * 2];
             let mut stream_error: Option<String> = None;
+            let stderr_task = tokio::spawn(async move {
+                let mut stderr_output = Vec::new();
+                let _ = stderr.read_to_end(&mut stderr_output).await;
+                stderr_output
+            });
 
             loop {
                 match stdout.read_exact(&mut buffer).await {
@@ -121,12 +136,15 @@ impl FluxerVoiceConnection {
                             .map(|c| i16::from_le_bytes([c[0], c[1]]))
                             .collect();
 
-                        if let Err(e) = source.capture_frame(&AudioFrame {
-                            data: samples.into(),
-                            num_channels: 2,
-                            sample_rate: 48_000,
-                            samples_per_channel: 960,
-                        }).await {
+                        if let Err(e) = source
+                            .capture_frame(&AudioFrame {
+                                data: samples.into(),
+                                num_channels: 2,
+                                sample_rate: 48_000,
+                                samples_per_channel: 960,
+                            })
+                            .await
+                        {
                             stream_error = Some(format!("Audio capture error: {}", e));
                             break;
                         }
@@ -143,8 +161,8 @@ impl FluxerVoiceConnection {
             let exit_status = child.wait().await;
             let failed = exit_status.map(|s| !s.success()).unwrap_or(true);
             if failed || stream_error.is_some() {
-                let mut stderr_output = String::new();
-                let _ = stderr.read_to_string(&mut stderr_output).await;
+                let stderr_output = stderr_task.await.unwrap_or_default();
+                let stderr_output = String::from_utf8_lossy(&stderr_output);
 
                 let last_lines: String = stderr_output
                     .lines()
