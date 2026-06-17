@@ -3,11 +3,14 @@
 //! Handles auth headers, serialization, and error handling. You'll usually
 //! access this through `ctx.http` in your event handlers.
 
-use reqwest::{ header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, USER_AGENT}, StatusCode, };
-use serde::de::DeserializeOwned;
-use serde_json::json;
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, USER_AGENT},
+    StatusCode,
+};
 use crate::error::ClientError;
 use crate::model::*;
+use serde::de::DeserializeOwned;
+use serde_json::json;
 
 /// HTTP client for making REST API calls.
 ///
@@ -95,6 +98,26 @@ impl Http {
             .request_json::<GatewayBotResponse>(self.client.get(&url))
             .await?;
         Ok(res.url)
+    }
+
+    /// Returns the instance discovery document for the current base URL.
+    pub async fn get_well_known_fluxer(&self) -> Result<WellKnownFluxerResponse, ClientError> {
+        let mut url = reqwest::Url::parse(&self.base_url)
+            .map_err(|e| ClientError::Api(format!("invalid base URL: {}", e)))?;
+        let mut path = url.path().trim_end_matches('/').to_string();
+        if let Some(prefix) = path.strip_suffix("/v1") {
+            path = prefix.to_string();
+        }
+        if path.is_empty() {
+            path.push('/');
+        }
+        if !path.ends_with('/') {
+            path.push('/');
+        }
+        path.push_str(".well-known/fluxer");
+        url.set_path(&path);
+        url.set_query(None);
+        self.request_json(self.client.get(url)).await
     }
 
     /// Fetches the bot's own user object.
@@ -396,11 +419,7 @@ impl Http {
     }
 
     /// Pins a message. Needs Manage Messages.
-    pub async fn pin_message(
-        &self,
-        channel_id: &str,
-        message_id: &str,
-    ) -> Result<(), ClientError> {
+    pub async fn pin_message(&self, channel_id: &str, message_id: &str) -> Result<(), ClientError> {
         let url = format!(
             "{}/channels/{}/pins/{}",
             self.base_url, channel_id, message_id
@@ -423,10 +442,7 @@ impl Http {
 
     /// Fetches an invite by code. Includes approximate member counts.
     pub async fn get_invite(&self, invite_code: &str) -> Result<Invite, ClientError> {
-        let url = format!(
-            "{}/invites/{}?with_counts=true",
-            self.base_url, invite_code
-        );
+        let url = format!("{}/invites/{}?with_counts=true", self.base_url, invite_code);
         self.request_json(self.client.get(&url)).await
     }
 
@@ -444,6 +460,12 @@ impl Http {
     pub async fn delete_invite(&self, invite_code: &str) -> Result<(), ClientError> {
         let url = format!("{}/invites/{}", self.base_url, invite_code);
         self.request_empty(self.client.delete(&url)).await
+    }
+
+    /// Accepts an invite.
+    pub async fn accept_invite(&self, invite_code: &str) -> Result<Invite, ClientError> {
+        let url = format!("{}/invites/{}", self.base_url, invite_code);
+        self.request_json(self.client.post(&url).body("")).await
     }
 
     /// Returns all active invites for a channel.
@@ -476,8 +498,15 @@ impl Http {
 
     /// Permanently deletes a guild. The bot must be the owner. (not tested)
     pub async fn delete_guild(&self, guild_id: &str) -> Result<(), ClientError> {
-        let url = format!("{}/guilds/{}", self.base_url, guild_id);
-        self.request_empty(self.client.delete(&url)).await
+        let url = format!("{}/guilds/{}/delete", self.base_url, guild_id);
+        self.request_empty(self.client.post(&url).body("")).await
+    }
+
+    /// Creates a guild.
+    pub async fn create_guild(&self, payload: &GuildCreatePayload) -> Result<Guild, ClientError> {
+        let url = format!("{}/guilds", self.base_url);
+        self.request_json(self.client.post(&url).json(payload))
+            .await
     }
 
     /// Returns all channels in a guild.
@@ -524,11 +553,7 @@ impl Http {
     }
 
     /// Kicks a member from the guild.
-    pub async fn kick_member(
-        &self,
-        guild_id: &str,
-        user_id: &str,
-    ) -> Result<(), ClientError> {
+    pub async fn kick_member(&self, guild_id: &str, user_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/guilds/{}/members/{}", self.base_url, guild_id, user_id);
         self.request_empty(self.client.delete(&url)).await
     }
@@ -586,17 +611,16 @@ impl Http {
     }
 
     /// Removes a ban.
-    pub async fn unban_member(
-        &self,
-        guild_id: &str,
-        user_id: &str,
-    ) -> Result<(), ClientError> {
+    pub async fn unban_member(&self, guild_id: &str, user_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/guilds/{}/bans/{}", self.base_url, guild_id, user_id);
         self.request_empty(self.client.delete(&url)).await
     }
 
     /// Returns the guild's ban list.
-    pub async fn get_guild_bans(&self, guild_id: &str) -> Result<Vec<serde_json::Value>, ClientError> {
+    pub async fn get_guild_bans(
+        &self,
+        guild_id: &str,
+    ) -> Result<Vec<serde_json::Value>, ClientError> {
         let url = format!("{}/guilds/{}/bans", self.base_url, guild_id);
         self.request_json(self.client.get(&url)).await
     }
@@ -629,11 +653,7 @@ impl Http {
     }
 
     /// Deletes a role.
-    pub async fn delete_role(
-        &self,
-        guild_id: &str,
-        role_id: &str,
-    ) -> Result<(), ClientError> {
+    pub async fn delete_role(&self, guild_id: &str, role_id: &str) -> Result<(), ClientError> {
         let url = format!("{}/guilds/{}/roles/{}", self.base_url, guild_id, role_id);
         self.request_empty(self.client.delete(&url)).await
     }
@@ -641,6 +661,15 @@ impl Http {
     /// Returns all custom emojis in a guild.
     pub async fn get_guild_emojis(&self, guild_id: &str) -> Result<Vec<Emoji>, ClientError> {
         let url = format!("{}/guilds/{}/emojis", self.base_url, guild_id);
+        self.request_json(self.client.get(&url)).await
+    }
+
+    /// Returns metadata about an emoji.
+    pub async fn get_emoji_metadata(
+        &self,
+        emoji_id: &str,
+    ) -> Result<GuildEmojiMetadata, ClientError> {
+        let url = format!("{}/emojis/{}/metadata", self.base_url, emoji_id);
         self.request_json(self.client.get(&url)).await
     }
 
@@ -746,6 +775,21 @@ impl Http {
         self.request_json(req).await
     }
 
+    /// Lists RTC regions available for a voice channel.
+    pub async fn get_rtc_regions(&self, channel_id: &str) -> Result<Vec<RtcRegion>, ClientError> {
+        let url = format!("{}/channels/{}/rtc-regions", self.base_url, channel_id);
+        self.request_json(self.client.get(&url)).await
+    }
+
+    /// Returns the current slowmode state for the caller in a channel.
+    pub async fn get_channel_slowmode(
+        &self,
+        channel_id: &str,
+    ) -> Result<ChannelSlowmodeState, ClientError> {
+        let url = format!("{}/channels/{}/slowmode", self.base_url, channel_id);
+        self.request_json(self.client.get(&url)).await
+    }
+
     /// Searches messages across the platform. See [`SearchMessagesQuery`] for
     /// all available filters (content, author, channel, attachments, etc).
     pub async fn search_messages(
@@ -762,6 +806,34 @@ impl Http {
         let url = format!("{}/read-states/ack-bulk", self.base_url);
         let body = json!({ "read_states": states });
         self.request_empty(self.client.post(&url).json(&body)).await
+    }
+
+    /// Returns the guild audit log and referenced users/webhooks.
+    pub async fn get_guild_audit_logs(
+        &self,
+        guild_id: &str,
+    ) -> Result<GuildAuditLogList, ClientError> {
+        let url = format!("{}/guilds/{}/audit-logs", self.base_url, guild_id);
+        self.request_json(self.client.get(&url)).await
+    }
+
+    /// Returns the guild vanity invite code and usage count.
+    pub async fn get_guild_vanity_url(
+        &self,
+        guild_id: &str,
+    ) -> Result<GuildVanityUrl, ClientError> {
+        let url = format!("{}/guilds/{}/vanity-url", self.base_url, guild_id);
+        self.request_json(self.client.get(&url)).await
+    }
+
+    /// Sets or clears the guild vanity invite code.
+    pub async fn update_guild_vanity_url(
+        &self,
+        guild_id: &str,
+        payload: &GuildVanityUrlUpdatePayload,
+    ) -> Result<GuildVanityUrlUpdateResponse, ClientError> {
+        let url = format!("{}/guilds/{}/vanity-url", self.base_url, guild_id);
+        self.request_json(self.client.patch(&url).json(payload)).await
     }
 
     /// Executes a webhook (sends a message through it). Uses `wait=true` so
@@ -807,7 +879,6 @@ impl Http {
         );
         self.request_json(self.client.patch(&url).json(payload)).await
     }
-
 }
 
 fn urlencoded(s: &str) -> String {
@@ -819,8 +890,7 @@ fn urlencoded(s: &str) -> String {
             bytes
                 .iter()
                 .map(|b| match b {
-                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
-                    | b'-' | b'_' | b'.' | b'~' | b':' => {
+                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b':' => {
                         char::from(*b).to_string()
                     }
                     other => format!("%{:02X}", other),

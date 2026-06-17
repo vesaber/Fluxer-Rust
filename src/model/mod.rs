@@ -53,6 +53,61 @@ pub struct Guild {
     pub vanity_url_code: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerEndpoints {
+    pub api: String,
+    pub api_client: String,
+    pub api_public: String,
+    pub gateway: String,
+    pub media: String,
+    pub static_cdn: String,
+    pub marketing: String,
+    pub admin: String,
+    pub invite: String,
+    pub gift: String,
+    pub webapp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerCaptcha {
+    pub provider: String,
+    pub hcaptcha_site_key: Option<String>,
+    pub turnstile_site_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerFeatures {
+    pub voice_enabled: bool,
+    pub stripe_enabled: bool,
+    pub self_hosted: bool,
+    pub presigned_attachment_uploads: bool,
+    pub emails_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerGif {
+    pub provider: String,
+    pub display_name: String,
+    pub attribution_required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerSso {
+    pub enabled: bool,
+    pub enforced: bool,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WellKnownFluxerResponse {
+    pub api_code_version: u64,
+    pub endpoints: WellKnownFluxerEndpoints,
+    pub captcha: WellKnownFluxerCaptcha,
+    pub features: WellKnownFluxerFeatures,
+    pub gif: WellKnownFluxerGif,
+    pub sso: WellKnownFluxerSso,
+}
+
 /// A guild member. Wraps a [`User`] with guild-specific info like nickname and roles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Member {
@@ -112,6 +167,15 @@ pub struct Emoji {
     pub managed: Option<bool>,
     pub animated: Option<bool>,
     pub available: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildEmojiMetadata {
+    pub id: Snowflake,
+    pub guild_id: Snowflake,
+    pub name: String,
+    pub animated: bool,
+    pub allow_cloning: bool,
 }
 
 impl Emoji {
@@ -341,24 +405,53 @@ impl EmbedBuilder {
         self
     }
     pub fn footer(mut self, text: impl Into<String>, icon_url: Option<String>) -> Self {
-        self.0.footer = Some(EmbedFooter { text: text.into(), icon_url });
+        self.0.footer = Some(EmbedFooter {
+            text: text.into(),
+            icon_url,
+        });
         self
     }
     pub fn image(mut self, url: impl Into<String>) -> Self {
-        self.0.image = Some(EmbedMedia { url: url.into(), height: None, width: None });
+        self.0.image = Some(EmbedMedia {
+            url: url.into(),
+            height: None,
+            width: None,
+        });
         self
     }
     pub fn thumbnail(mut self, url: impl Into<String>) -> Self {
-        self.0.thumbnail = Some(EmbedMedia { url: url.into(), height: None, width: None });
+        self.0.thumbnail = Some(EmbedMedia {
+            url: url.into(),
+            height: None,
+            width: None,
+        });
         self
     }
-    pub fn author(mut self, name: impl Into<String>, url: Option<String>, icon_url: Option<String>) -> Self {
-        self.0.author = Some(EmbedAuthor { name: name.into(), url, icon_url });
+    pub fn author(
+        mut self,
+        name: impl Into<String>,
+        url: Option<String>,
+        icon_url: Option<String>,
+    ) -> Self {
+        self.0.author = Some(EmbedAuthor {
+            name: name.into(),
+            url,
+            icon_url,
+        });
         self
     }
-    pub fn field(mut self, name: impl Into<String>, value: impl Into<String>, inline: bool) -> Self {
+    pub fn field(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+        inline: bool,
+    ) -> Self {
         let fields = self.0.fields.get_or_insert_with(Vec::new);
-        fields.push(EmbedField { name: name.into(), value: value.into(), inline });
+        fields.push(EmbedField {
+            name: name.into(),
+            value: value.into(),
+            inline,
+        });
         self
     }
     pub fn build(self) -> Embed {
@@ -375,6 +468,32 @@ pub struct Invite {
     pub target_user: Option<User>,
     pub approximate_member_count: Option<u64>,
     pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RtcRegion {
+    pub id: String,
+    pub name: String,
+    pub emoji: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelSlowmodeState {
+    pub rate_limit_per_user: u64,
+    pub retry_after_ms: u64,
+    pub next_send_allowed_at: Option<String>,
+    pub can_bypass: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildVanityUrl {
+    pub code: Option<String>,
+    pub uses: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildVanityUrlUpdateResponse {
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1178,7 +1297,7 @@ pub struct SearchMessagesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuildAuditLogEntryCreate {
     pub id: Snowflake,
-    pub guild_id: Snowflake,
+    pub guild_id: Option<Snowflake>,
     pub action_type: Option<u64>,
     pub user_id: Option<Snowflake>,
     pub target_id: Option<Snowflake>,
@@ -1186,6 +1305,38 @@ pub struct GuildAuditLogEntryCreate {
     pub changes: Option<Vec<AuditLogChange>>,
     /// Extra context depending on the action e.g. channel name/type for channel creates.
     pub options: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogUser {
+    pub id: Snowflake,
+    pub username: String,
+    pub discriminator: String,
+    pub global_name: Option<String>,
+    pub avatar: Option<String>,
+    pub avatar_color: Option<u64>,
+    pub bot: Option<bool>,
+    pub system: Option<bool>,
+    pub flags: u64,
+    pub mention_flags: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogWebhook {
+    pub id: Snowflake,
+    #[serde(rename = "type")]
+    pub kind: Option<u8>,
+    pub guild_id: Option<Snowflake>,
+    pub channel_id: Option<Snowflake>,
+    pub name: String,
+    pub avatar_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuildAuditLogList {
+    pub audit_log_entries: Vec<GuildAuditLogEntryCreate>,
+    pub users: Vec<AuditLogUser>,
+    pub webhooks: Vec<AuditLogWebhook>,
 }
 
 /// A single changed field inside an audit log entry.
@@ -1202,6 +1353,23 @@ pub struct AuditLogChange {
 pub struct ReadStateAck {
     pub channel_id: Snowflake,
     pub message_id: Snowflake,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct GuildCreatePayload {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_features: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct GuildVanityUrlUpdatePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
